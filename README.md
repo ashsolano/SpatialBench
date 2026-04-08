@@ -11,41 +11,41 @@
 
 | Batch   	| Slide        	| Condition 	| Sample ID 	| Technology 	| Preprocessing Script |
 |---------	|--------------	|-----------	|-----------	|------------	|-------------- |
-| batch24 	| slide0011456 	| Knock Out 	| [KO166  ]()     	  | 10X Xenium 	| [EDA_?_]() |
-| batch24 	| slide0011456 	| Knock Out 	| [KO167  ]()   	    | 10X Xenium 	| [EDA_?_]() |
-| batch24 	| slide0011456 	| Wild Type 	| [WT713  ]()   	    | 10X Xenium 	| [EDA_?_]() |
-| batch24 	| slide0011456 	| Control   	| [Ctrl173-rep1]()   	| 10X Xenium 	| [EDA_?_]() |
-| batch27 	| slide0017329 	| Wild Type 	| [WT710-rep1]()   	  | 10X Xenium 	| [EDA_?_]() |
-| batch27 	| slide0017329 	| Control   	| [Ctrl172-rep1]()   	| 10X Xenium 	| [EDA_?_]() |
-| batch27 	| slide0017329 	| Knock Out 	| [KO168  ]()   	    | 10X Xenium 	| [EDA_?_]() |
-| batch27 	| slide0017329 	| Control   	| [Ctrl174-rep1]()   	| 10X Xenium 	| [EDA_?_]() |
-| batch27 	| slide0017329 	| Wild Type 	| [WT709-rep1]()   	  | 10X Xenium 	| [EDA_?_]() |
-| batch34 	| slide0032118 	| Control   	| [Ctrl173-rep2]()   	| 10X Xenium 	| [EDA_?_]() |
-| batch34 	| slide0032118 	| Wild Type 	| [WT710-rep2]()   	  | 10X Xenium 	| [EDA_?_]() |
-| batch34 	| slide0032118 	| Wild Type 	| [WT709-rep2]()   	  | 10X Xenium 	| [EDA_?_]() |
-| batch34 	| slide0032118 	| Control   	| [Ctrl174-rep2]()   	| 10X Xenium 	| [EDA_?_]() |
-| batch34 	| slide0032118 	| Control   	| [Ctrl172-rep2]()   	| 10X Xenium 	| [EDA_?_]() |
-| batch22 	| only slide	  | Knock Out 	| [KO166b]()        	| Merscope   	| [EDA_?_]() |
-| batch22 	| only slide	  | Control   	| [Ctrl174a]()      	| Merscope   	| [EDA_?_]() |
-| batch26 	| slide 3+4	    | Knock Out 	| [KO168]()         	| Merscope   	| [EDA_?_]() |
-| batch26 	| slide 3+4	    | Wild Type 	| [WT710]()         	| Merscope   	| [EDA_?_]() |
-| batch26 	| slide 3+4	    | Control   	| [Ctrl173]()       	| Merscope   	| [EDA_?_]() |
-| batch27 	| slide 1+2	    | Control   	| [Ctrl172]()       	| Merscope   	| [EDA_?_]() |
-| batch27 	| slide 1+2	    | Knock Out 	| [KO167]()         	| Merscope   	| [EDA_?_]() |
-| batch27 	| slide 1+2	    | Wild Type 	| [WT713]()         	| Merscope   	| [EDA_?_]() |
-| ?       	| ?     	      | Wild Type 	| [WT709]()         	| Merscope   	| [EDA_?_]() |
+| batch 1 	| slide 2     	| Knock Out 	| [KO166  ]()     	  | 10X Xenium 	| [EDA_?_]() |
+| batch 1 	| slide 2     	| Knock Out 	| [KO167  ]()   	    | 10X Xenium 	| [EDA_?_]() |
+| batch 1 	| slide 2     	| Wild Type 	| [WT713  ]()   	    | 10X Xenium 	| [EDA_?_]() |
+| batch 1 	| slide 2     	| Control   	| [Ctrl173-rep1]()   	| 10X Xenium 	| [EDA_?_]() |
+| batch 2 	| slide 3     	| Wild Type 	| [WT710-rep1]()   	  | 10X Xenium 	| [EDA_?_]() |
+| batch 2 	| slide 3     	| Control   	| [Ctrl172-rep1]()   	| 10X Xenium 	| [EDA_?_]() |
+| batch 2 	| slide 3     	| Knock Out 	| [KO168  ]()   	    | 10X Xenium 	| [EDA_?_]() |
+| batch 2 	| slide 3     	| Control   	| [Ctrl174-rep1]()   	| 10X Xenium 	| [EDA_?_]() |
+| batch 2 	| slide 3     	| Wild Type 	| [WT709-rep1]()   	  | 10X Xenium 	| [EDA_?_]() |
+| batch 3 	| slide 4     	| Control   	| [Ctrl173-rep2]()   	| 10X Xenium 	| [EDA_?_]() |
+| batch 3 	| slide 4     	| Wild Type 	| [WT710-rep2]()   	  | 10X Xenium 	| [EDA_?_]() |
+| batch 3 	| slide 4     	| Wild Type 	| [WT709-rep2]()   	  | 10X Xenium 	| [EDA_?_]() |
+| batch 3 	| slide 4     	| Control   	| [Ctrl174-rep2]()   	| 10X Xenium 	| [EDA_?_]() |
+| batch 3 	| slide 4     	| Control   	| [Ctrl172-rep2]()   	| 10X Xenium 	| [EDA_?_]() |
+| batch 6 	| slide 6	      | Knock Out 	| [KO166b]()        	| Merscope   	| [EDA_?_]() |
+| batch 6 	| slide 6	      | Control   	| [Ctrl174a]()      	| Merscope   	| [EDA_?_]() |
+| batch 9 	| slide 15	    | Knock Out 	| [KO168]()         	| Merscope   	| [EDA_?_]() |
+| batch 9 	| slide 15	    | Control   	| [Ctrl173]()       	| Merscope   	| [EDA_?_]() |
+| batch 10 	| slide 16	    | Control   	| [Ctrl172]()       	| Merscope   	| [EDA_?_]() |
+| batch 10 	| slide 16	    | Knock Out 	| [KO167]()         	| Merscope   	| [EDA_?_]() |
+| batch 13 	| slide 19 	    | Wild Type 	| [WT709]()         	| Merscope   	| [EDA_?_]() |
+| batch 13 	| slide 19	    | Wild Type 	| [WT710]()         	| Merscope   	| [EDA_?_]() |
+| batch 13 	| slide 19	    | Wild Type 	| [WT713]()         	| Merscope   	| [EDA_?_]() |
 
 <b>Sequencing Data</b>
 ---
 
-| Batch   	| Condition 	| Sample ID 	| Technology    	| Preprocessing Script |
-|---------	|-----------	|-----------	|---------------	|--------------- |
-| batch33 	| Wild Type 	| [WT709]()     	| 10X Visium HD 	| [EDA_?_]() |
-| batch33 	| Wild Type 	| [WT713]()     	| 10X Visium HD 	| [EDA_?_]() |
-| batch33 	| Knock Out 	| [KO167]()     	| 10X Visium HD 	| [EDA_?_]() |
-| batch33 	| Knock Out 	| [KO168]()     	| 10X Visium HD 	| [EDA_?_]() |
-| batch33 	| Wild Type 	| [WT709](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8047887)     	| 10X Chromium  	| [DOI: 10.1186/s13059-025-03543-4](https://github.com/mritchielab/SpatialBenchVisium/blob/main/analysis/sc_preprocessing.Rmd) |
-| batch29 	| Wild Type 	| [WT713](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8047887)     	| 10X Chromium  	| [DOI: 10.1186/s13059-025-03543-4](https://github.com/mritchielab/SpatialBenchVisium/blob/main/analysis/sc_preprocessing.Rmd) |
+| Batch   	| Slide   | Condition 	| Sample ID 	| Technology    	| Preprocessing Script |
+|---------	|------	  |----------  	|---------- 	|-----------	    |--------------------- |
+| batch 1 	|slide 1  | Knock Out 	| [KO168]()   | 10X Visium HD 	| [EDA_?_]()           |
+| batch 1 	|slide 1  | Wild Type 	| [WT709]()   | 10X Visium HD 	| [EDA_?_]()           |
+| batch 1 	|slide 2  | Knock Out 	| [KO167]()   | 10X Visium HD 	| [EDA_?_]()           |
+| batch 1 	|slide 2  | Wild Type 	| [WT713]()   | 10X Visium HD 	| [EDA_?_]()           |
+| batch29 	|N/A   	  | Wild Type 	| [WT709](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8047887)     	| 10X Chromium  	| [DOI: 10.1186/s13059-025-03543-4](https://github.com/mritchielab/SpatialBenchVisium/blob/main/analysis/sc_preprocessing.Rmd) |
+| batch29 	|N/A   	  | Wild Type 	| [WT713](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSM8047887)     	| 10X Chromium  	| [DOI: 10.1186/s13059-025-03543-4](https://github.com/mritchielab/SpatialBenchVisium/blob/main/analysis/sc_preprocessing.Rmd) |
 
 # Acknowledgements
 
