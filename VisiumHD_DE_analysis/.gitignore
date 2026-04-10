@@ -1,0 +1,9 @@
+_targets/
+bluk_gsa_report/
+cloupes/
+notebooks/*.html
+/.quarto/
+*_files/
+*_cache/
+output
+logs/

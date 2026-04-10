@@ -109,7 +109,7 @@ Two `limma::roast` rotation gene set tests are applied to each cell type's voom 
 
 The same voom-limma pipeline is applied within each genotype group (KO, WT), comparing DZ
 and LZ pseudo-bulk counts.  Results are validated against a published DZ/LZ bulk RNA-seq
-signature ([Gabriel et al.](data/Gabriel_etal_supp.xlsx)) using a ROAST gene set test.
+signature ([Victora et al.](data/Gabriel_etal_supp.xlsx)) using a ROAST gene set test.
 
 ## Visualisation (`targets/hd_ko_wt_plots.R`)
 
@@ -138,7 +138,6 @@ R/                  Helper functions (auto-sourced by tar_source())
   clustering.R      SNN/Leiden clustering, iSC.MEB, RCTD wrappers
   visualization.R   Spatial plots, heatmaps, volcano plots
   DE.R              Pseudo-bulk aggregation, GO/KEGG enrichment
-  DA.R              sPLS-DA discriminant analysis (exploratory)
   convertions.R     Seurat ↔ SpatialExperiment conversion
 data/               Sample metadata, probe sets, published gene signatures
 output/             Generated plots (PDF) and result tables (XLSX/CSV)
