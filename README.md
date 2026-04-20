@@ -31,7 +31,7 @@
 | batch 9 	| slide 15	    | Control   	| [Ctrl173](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/Ctrl173)       	| Merscope   	| [EDA_?_]() |
 | batch 10 	| slide 16	    | Control   	| [Ctrl172](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/Ctrl172)       	| Merscope   	| [EDA_?_]() |
 | batch 10 	| slide 16	    | Knock Out 	| [KO167](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/KO167)         	| Merscope   	| [EDA_?_]() |
-| batch 13 	| slide 19 	    | Wild Type 	| [WT709](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/WT709)         	| Merscope   	| [EDA_?_]() |
+| batch 13 	| slide 19 	    | Wild Type 	| [WT709](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/WT709/WT709)         	| Merscope   	| [EDA_?_]() |
 | batch 13 	| slide 19	    | Wild Type 	| [WT710](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/WT710)         	| Merscope   	| [EDA_?_]() |
 | batch 13 	| slide 19	    | Wild Type 	| [WT713](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/Files/MERSCOPE/WT713)         	| Merscope   	| [EDA_?_]() |
 
