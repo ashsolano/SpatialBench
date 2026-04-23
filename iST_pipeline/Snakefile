@@ -1,0 +1,388 @@
+configfile: "config/config.yaml"
+
+include: "01_preprocessing/rules/preprocessing.smk"
+include: "02_spatial_analysis/rules/spatial_analysis.smk"
+
+
+# Default target: build all binned objects for all platforms and resolutions
+rule all:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_{resolution}um/{sample}_{resolution}um.rds",
+            sample     = config["xenium"]["samples"],
+            resolution = config["bin_resolutions"],
+        ),
+        expand(
+            "results/01_preprocessing/merscope_{resolution}um/{sample}_{resolution}um.rds",
+            sample     = config["merscope"]["samples"],
+            resolution = config["bin_resolutions"],
+        ),
+
+
+# Named sub-targets — call these directly to run a single platform or resolution:
+#   snakemake xenium_binning        # all Xenium binned samples, all resolutions
+#   snakemake merscope_binning      # all MERSCOPE binned samples, all resolutions
+#   snakemake xenium_default        # all Xenium default-segmentation samples
+#   snakemake xenium_cellpose       # all Xenium Cellpose-segmentation samples
+#   snakemake xenium_proseg         # all Xenium Proseg-segmentation samples
+#   snakemake merscope_default      # all MERSCOPE default-segmentation samples
+#   snakemake merscope_cellpose     # all MERSCOPE Cellpose-segmentation samples
+#   snakemake merscope_proseg       # all MERSCOPE Proseg-segmentation samples
+#   snakemake --config bin_resolutions=[8]   # override resolution for any binning target
+
+rule xenium_binning:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_{resolution}um/{sample}_{resolution}um.rds",
+            sample     = config["xenium"]["samples"],
+            resolution = config["bin_resolutions"],
+        )
+
+
+rule merscope_binning:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_{resolution}um/{sample}_{resolution}um.rds",
+            sample     = config["merscope"]["samples"],
+            resolution = config["bin_resolutions"],
+        )
+
+
+rule xenium_default:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_default/{sample}_default.rds",
+            sample = config["xenium"]["samples"],
+        )
+
+
+rule xenium_cellpose:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_cellpose/{sample}_cellpose.rds",
+            sample = config["xenium_cellpose"]["samples"],
+        )
+
+
+rule merscope_default:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_default/{sample}_default.rds",
+            sample = config["merscope"]["samples"],
+        )
+
+
+rule merscope_cellpose:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_cellpose/{sample}_cellpose.rds",
+            sample = config["merscope_cellpose"]["samples"],
+        )
+
+
+rule xenium_proseg:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_proseg/{sample}_proseg.rds",
+            sample = config["xenium_proseg"]["samples"],
+        )
+
+
+rule merscope_proseg:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_proseg/{sample}_proseg.rds",
+            sample = config["merscope_proseg"]["samples"],
+        )
+
+
+# ---------------------------------------------------------------------------
+# 02_spatial_analysis — named sub-targets
+# ---------------------------------------------------------------------------
+# Run a single method end-to-end (preprocess -> merge -> embed):
+#   snakemake spatial_xenium_default           # 9 non-batch34 samples, default seg
+#   snakemake spatial_xenium_batch34_default   # 5 batch34 samples, default seg
+#   snakemake spatial_xenium_batch34_cellpose  # 5 batch34 samples, Cellpose seg
+#   snakemake spatial_xenium_batch34_proseg    # 5 batch34 samples, Proseg seg
+#   snakemake spatial_merscope_default
+#   snakemake spatial_merscope_cellpose
+#   snakemake spatial_merscope_proseg
+# Run all seven methods:
+#   snakemake spatial_analysis
+
+rule spatial_xenium_default:
+    input:
+        "results/02_spatial_analysis/xenium_default/embedded.rds"
+
+
+rule spatial_xenium_batch34_default:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_default/embedded.rds"
+
+
+rule spatial_xenium_batch34_cellpose:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_cellpose/embedded.rds"
+
+
+rule spatial_xenium_batch34_proseg:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_proseg/embedded.rds"
+
+
+rule spatial_merscope_default:
+    input:
+        "results/02_spatial_analysis/merscope_default/embedded.rds"
+
+
+rule spatial_merscope_cellpose:
+    input:
+        "results/02_spatial_analysis/merscope_cellpose/embedded.rds"
+
+
+rule spatial_merscope_proseg:
+    input:
+        "results/02_spatial_analysis/merscope_proseg/embedded.rds"
+
+
+rule spatial_analysis:
+    input:
+        expand(
+            "results/02_spatial_analysis/{method}/embedded.rds",
+            method = [
+                "xenium_default",
+                "xenium_batch34_default", "xenium_batch34_cellpose", "xenium_batch34_proseg",
+                "merscope_default",       "merscope_cellpose",       "merscope_proseg",
+            ],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stage 4 — Annotation: spatial_annotate_{method}
+# ---------------------------------------------------------------------------
+# Assign cell type labels to clusters using config["annotations"][method].
+# Run one method at a time (after inspecting its UMAP and filling in config):
+#   snakemake spatial_annotate_xenium_default
+#   snakemake spatial_annotate_xenium_batch34_default
+#   snakemake spatial_annotate_xenium_batch34_cellpose
+#   snakemake spatial_annotate_xenium_batch34_proseg
+#   snakemake spatial_annotate_merscope_default
+#   snakemake spatial_annotate_merscope_cellpose
+#   snakemake spatial_annotate_merscope_proseg
+# Run all seven at once:
+#   snakemake spatial_annotate_all
+
+rule spatial_annotate_xenium_default:
+    input:
+        "results/02_spatial_analysis/xenium_default/annotated.rds"
+
+
+rule spatial_annotate_xenium_batch34_default:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_default/annotated.rds"
+
+
+rule spatial_annotate_xenium_batch34_cellpose:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_cellpose/annotated.rds"
+
+
+rule spatial_annotate_xenium_batch34_proseg:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_proseg/annotated.rds"
+
+
+rule spatial_annotate_merscope_default:
+    input:
+        "results/02_spatial_analysis/merscope_default/annotated.rds"
+
+
+rule spatial_annotate_merscope_cellpose:
+    input:
+        "results/02_spatial_analysis/merscope_cellpose/annotated.rds"
+
+
+rule spatial_annotate_merscope_proseg:
+    input:
+        "results/02_spatial_analysis/merscope_proseg/annotated.rds"
+
+
+rule spatial_annotate_all:
+    input:
+        expand(
+            "results/02_spatial_analysis/{method}/annotated.rds",
+            method = [
+                "xenium_default",
+                "xenium_batch34_default", "xenium_batch34_cellpose", "xenium_batch34_proseg",
+                "merscope_default",       "merscope_cellpose",       "merscope_proseg",
+            ],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stage 5 — GC B cell subclustering: spatial_subcluster_gc_{method}
+# ---------------------------------------------------------------------------
+# Subset GC B cells and run an independent BANKSY embedding per method.
+# Requires annotated.rds with cell_type == "GC B cells" populated.
+# Run one method at a time:
+#   snakemake spatial_subcluster_gc_xenium_default
+#   snakemake spatial_subcluster_gc_xenium_batch34_default
+#   snakemake spatial_subcluster_gc_xenium_batch34_cellpose
+#   snakemake spatial_subcluster_gc_xenium_batch34_proseg
+#   snakemake spatial_subcluster_gc_merscope_default
+#   snakemake spatial_subcluster_gc_merscope_cellpose
+#   snakemake spatial_subcluster_gc_merscope_proseg
+# Run all seven at once:
+#   snakemake spatial_subcluster_gc_all
+
+rule spatial_subcluster_gc_xenium_default:
+    input:
+        "results/02_spatial_analysis/xenium_default/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_xenium_batch34_default:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_default/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_xenium_batch34_cellpose:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_cellpose/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_xenium_batch34_proseg:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_proseg/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_merscope_default:
+    input:
+        "results/02_spatial_analysis/merscope_default/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_merscope_cellpose:
+    input:
+        "results/02_spatial_analysis/merscope_cellpose/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_merscope_proseg:
+    input:
+        "results/02_spatial_analysis/merscope_proseg/subclustered_gc.rds"
+
+
+rule spatial_subcluster_gc_all:
+    input:
+        expand(
+            "results/02_spatial_analysis/{method}/subclustered_gc.rds",
+            method = [
+                "xenium_default",
+                "xenium_batch34_default", "xenium_batch34_cellpose", "xenium_batch34_proseg",
+                "merscope_default",       "merscope_cellpose",       "merscope_proseg",
+            ],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stage 6 — GC zone merging: spatial_merge_gc_zones_{method}
+# ---------------------------------------------------------------------------
+# Inject gc_zone from the GC subset into the full object and build cell_type2.
+# Requires subclustered_gc.rds and config["gc_zones"][method] to be filled in.
+# Run one method at a time (after inspecting its GC UMAP and filling in config):
+#   snakemake spatial_merge_gc_zones_xenium_default
+#   snakemake spatial_merge_gc_zones_xenium_batch34_default
+#   snakemake spatial_merge_gc_zones_xenium_batch34_cellpose
+#   snakemake spatial_merge_gc_zones_xenium_batch34_proseg
+#   snakemake spatial_merge_gc_zones_merscope_default
+#   snakemake spatial_merge_gc_zones_merscope_cellpose
+#   snakemake spatial_merge_gc_zones_merscope_proseg
+# Run all seven at once:
+#   snakemake spatial_merge_gc_zones_all
+
+rule spatial_merge_gc_zones_xenium_default:
+    input:
+        "results/02_spatial_analysis/xenium_default/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_xenium_batch34_default:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_default/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_xenium_batch34_cellpose:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_cellpose/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_xenium_batch34_proseg:
+    input:
+        "results/02_spatial_analysis/xenium_batch34_proseg/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_merscope_default:
+    input:
+        "results/02_spatial_analysis/merscope_default/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_merscope_cellpose:
+    input:
+        "results/02_spatial_analysis/merscope_cellpose/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_merscope_proseg:
+    input:
+        "results/02_spatial_analysis/merscope_proseg/annotated_final.rds"
+
+
+rule spatial_merge_gc_zones_all:
+    input:
+        expand(
+            "results/02_spatial_analysis/{method}/annotated_final.rds",
+            method = [
+                "xenium_default",
+                "xenium_batch34_default", "xenium_batch34_cellpose", "xenium_batch34_proseg",
+                "merscope_default",       "merscope_cellpose",       "merscope_proseg",
+            ],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stage 7 — Pseudobulk DE: spatial_de_{method}
+# ---------------------------------------------------------------------------
+# KO vs WT limma-voom pseudobulk DE per cell type.
+# Only runs on methods with KO samples; xenium_batch34_* are excluded.
+# Requires annotated.rds with cell_type, condition, and animal_id columns.
+# Run one method at a time:
+#   snakemake spatial_de_xenium_default
+#   snakemake spatial_de_merscope_default
+#   snakemake spatial_de_merscope_cellpose
+#   snakemake spatial_de_merscope_proseg
+# Run all four at once:
+#   snakemake spatial_de_all
+
+rule spatial_de_xenium_default:
+    input:
+        "results/02_spatial_analysis/xenium_default/pseudobulk_de/de_results.rds"
+
+
+rule spatial_de_merscope_default:
+    input:
+        "results/02_spatial_analysis/merscope_default/pseudobulk_de/de_results.rds"
+
+
+rule spatial_de_merscope_cellpose:
+    input:
+        "results/02_spatial_analysis/merscope_cellpose/pseudobulk_de/de_results.rds"
+
+
+rule spatial_de_merscope_proseg:
+    input:
+        "results/02_spatial_analysis/merscope_proseg/pseudobulk_de/de_results.rds"
+
+
+rule spatial_de_all:
+    input:
+        expand(
+            "results/02_spatial_analysis/{method}/pseudobulk_de/de_results.rds",
+            method = config["spatial_analysis"]["de_methods"],
+        )
+

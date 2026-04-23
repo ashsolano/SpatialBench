@@ -1,0 +1,32 @@
+# Snakemake profile for WEHI Milton HPC
+# Uses snakemake-executor-plugin-slurm (Snakemake 9.19.0+)
+# Conda environment: source activate snakemake-slurm (or equivalent)
+#
+# Before first run, create the log directories:
+#   mkdir -p logs/slurm benchmarks/01_preprocessing
+
+executor: "slurm"
+
+jobs: 50
+latency-wait: 60
+
+use-conda: false
+use-singularity: false
+
+software-deployment-method: env-modules
+
+rerun-incomplete: true
+keep-going: false
+
+benchmark-extended: true
+
+rerun-triggers:
+  - input
+  - mtime
+  - params
+
+default-resources:
+  mem_mb: 8000
+  cpus_per_task: 1
+  runtime: 2880
+  partition: regular

@@ -1,0 +1,36 @@
+# Large data files
+data/raw/
+data/processed/
+*.h5
+*.h5ad
+*.rds
+*.RDS
+*.csv
+*.tsv
+*.parquet
+
+# Results and figures (generated outputs)
+results/
+figures/
+
+# Logs
+logs/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Python/Snakemake
+.snakemake/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# Conda
+.conda/
+
+# System
+.DS_Store
+*.swp
+benchmarks/

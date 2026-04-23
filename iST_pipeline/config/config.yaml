@@ -1,0 +1,229 @@
+# Paths
+# xenium samples: dict of sample name -> full path to data directory (including /outs)
+# merscope samples: dict of sample name -> full path to data directory
+
+xenium:
+  samples:
+    wt709_batch27: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0017329__Region_5/outs
+    wt710_batch27: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0017329__Region_1/outs
+    wt713_batch24: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0011456__Region_3/outs
+    ctrl172_batch27: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0017329__Region_2/outs
+    ctrl173_batch24: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0011456__Region_4/outs
+    ctrl174_batch27: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0017329__Region_4/outs
+    ko166_batch24: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0011456__Region_1/outs
+    ko167_batch24: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0011456__Region_2/outs
+    ko168_batch27: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0017329__Region_3/outs
+    # xenium samples are multimodal staining and only included in segmentation benchmarking
+    wt709__batch34__0032118: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1_disable_stains__Batch34__0032118__Region_3/outs
+    wt710__batch34__0032118: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1_disable_stains__Batch34__0032118__Region_2/outs
+    ctrl172_batch34__0032118: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1_disable_stains__Batch34__0032118__Region_5/outs
+    ctrl173_batch34__0032118: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1_disable_stains__Batch34__0032118__Region_1/outs
+    ctrl174__batch34__0032118: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1_disable_stains__Batch34__0032118__Region_4/outs
+    
+
+xenium_cellpose:
+  samples:
+    wt709__batch34__0032118: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_xenium/output-XETG00068__0032118__Region_3__20241031__014253_CP_resegmented/outs
+    wt710__batch34__0032118: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_xenium/output-XETG00068__0032118__Region_2__20241031__014253_CP_resegmented/outs
+    ctrl172_batch34__0032118: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_xenium/output-XETG00068__0032118__Region_5__20241031__014253_CP_resegmented/outs
+    ctrl173_batch34__0032118: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_xenium/output-XETG00068__0032118__Region_1__20241031__014253_CP_resegmented/outs
+    ctrl174__batch34__0032118: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_xenium/output-XETG00068__0032118__Region_4__20241031__014253_CP_resegmented/outs
+
+
+xenium_proseg:
+  samples:
+    wt709__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg_xenium__Batch34__0032118__Region_3/output
+    wt710__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg_xenium__Batch34__0032118__Region_2/output
+    ctrl172_batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg_xenium__Batch34__0032118__Region_5/output
+    ctrl173_batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg_xenium__Batch34__0032118__Region_1/output
+    ctrl174__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg_xenium__Batch34__0032118__Region_4/output
+
+
+merscope:
+  samples:
+    wt709_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-709/Vizgen
+    wt710_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-710/Vizgen
+    wt713_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-713/Vizgen
+    ctrl172_batch10: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch27_region1_Ctrl172/Vizgen
+    ctrl173_batch9: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch26_region0_Ctrl173/Vizgen
+    ctrl174_batch6: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch22_region1_Ctrl174/Vizgen
+    ko166_batch6: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch22_region2_KO166/Vizgen
+    ko167_batch10: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch27_region2_KO167/Vizgen
+    ko168_batch9: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch26_region2_KO168/Vizgen
+
+merscope_cellpose:
+  samples:
+    wt709_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-709/Cellpose
+    wt710_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-710/Cellpose
+    wt713_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-713/Cellpose
+    ctrl172_batch10: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch27_region1_Ctrl172/Cellpose
+    ctrl173_batch9: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch26_region0_Ctrl173/Cellpose
+    ctrl174_batch6: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch22_region1_Ctrl174/Cellpose
+    ko166_batch6: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch22_region2_KO166/Cellpose
+    ko167_batch10: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch27_region2_KO167/Cellpose
+    ko168_batch9: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Batch26_region2_KO168/Cellpose
+
+merscope_proseg:
+  samples:
+    wt709_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_Sample-709/output
+    wt710_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_SpleenBenchmarkingslide1_VMSC04501_Sample-710/output
+    wt713_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_SpleenBenchmarkingslide1_VMSC04501_Sample-713/output
+    ctrl172_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218ZalcensteinBatch27_VMSC04501_region_1/output
+    ctrl173_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218BenchmarkingBatch26_VMSC04501_region_0/output
+    ctrl174_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218Batch22FFMuSpleen_VMSC04501_region_1/output
+    ko166_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218Batch22FFMuSpleen_VMSC04501_region_2/output
+    ko167_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218Batch22FFMuSpleen_VMSC04501_region_2/output
+    ko168_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218BenchmarkingBatch26_VMSC04501_region_2/output
+
+
+# Bin sizes in microns — one RDS is produced per sample per resolution
+bin_resolutions:
+  - 8
+  - 16
+
+# Minimum transcript quality value for inclusion (Xenium only)
+mols_qv_threshold: 20
+
+# Root output directory
+output_dir: results
+
+
+# ---------------------------------------------------------------------------
+# 02_spatial_analysis parameters
+# ---------------------------------------------------------------------------
+spatial_analysis:
+
+  # --- Sample sets ---
+  # xenium_default_samples: 9 non-batch34 samples (batch24 + batch27) used for
+  #   the xenium_default method (expression benchmarking, no cross-seg comparison).
+  # xenium_batch34_samples: 5 batch34 samples shared across xenium_batch34_default,
+  #   xenium_batch34_cellpose, and xenium_batch34_proseg (segmentation benchmarking).
+  # Note: config["xenium"]["samples"] has 14 entries total; the two lists below
+  #   select the relevant subsets explicitly.
+  xenium_default_samples:
+    - wt709_batch27
+    - wt710_batch27
+    - wt713_batch24
+    - ctrl172_batch27
+    - ctrl173_batch24
+    - ctrl174_batch27
+    - ko166_batch24
+    - ko167_batch24
+    - ko168_batch27
+
+  xenium_batch34_samples:
+    - wt709__batch34__0032118
+    - wt710__batch34__0032118
+    - ctrl172_batch34__0032118
+    - ctrl173_batch34__0032118
+    - ctrl174__batch34__0032118
+
+  # MERSCOPE: 9 samples (shared across default, cellpose, proseg)
+  merscope_samples:
+    - wt709_batch13
+    - wt710_batch13
+    - wt713_batch13
+    - ctrl172_batch10
+    - ctrl173_batch9
+    - ctrl174_batch6
+    - ko166_batch6
+    - ko167_batch10
+    - ko168_batch9
+
+  # --- Platform-specific settings ---
+  # assay:         Seurat assay name used in QC, normalisation, and BANKSY
+  # banksy_lambda: spatial weighting (0 = expression only, 1 = neighbourhood only)
+  #                Xenium uses 0.3; MERSCOPE uses 0.4 (tuned in original analysis)
+  platforms:
+    xenium:
+      assay: Xenium
+      banksy_lambda: 0.3
+    merscope:
+      assay: Vizgen
+      banksy_lambda: 0.4
+
+  # Methods for which pseudobulk DE (KO vs WT) will be run.
+  # Excludes xenium_batch34_* — those cohorts contain no KO samples.
+  de_methods:
+    - xenium_default
+    - merscope_default
+    - merscope_cellpose
+    - merscope_proseg
+
+  # --- Shared analysis parameters ---
+  qc_min_counts: 6      # minimum transcripts per cell (strict greater-than)
+  scale_factor: 10000   # LogNormalize scale factor
+  banksy_k_geom: 12     # BANKSY geometric neighbourhood size
+  npcs: 30              # PCA components computed on BANKSY features
+  dims: 30              # dimensions used for Harmony, FindNeighbors, and UMAP
+  resolution: 0.6       # Louvain clustering resolution
+  umap_seed: 42         # UMAP random seed for reproducibility
+  gc_dims: 15           # dimensions for GC B cell FindNeighbors and RunUMAP
+  gc_resolution: 0.2    # Louvain resolution for GC B cell subclustering
+
+
+# ---------------------------------------------------------------------------
+# Cluster annotations — populate after inspecting embedded.rds UMAPs
+# ---------------------------------------------------------------------------
+# Maps cluster_harmony_sampleid (integer, as string key) -> cell type name.
+# Example when filled in:
+#   xenium_default:
+#     "0": "GC B cells"
+#     "1": "T cells"
+#     "2": "Macrophages"
+# Leave as empty mapping ({}) to run annotate_clusters.R in "Unannotated" mode.
+
+# ---------------------------------------------------------------------------
+# Pseudobulk DE parameters
+# ---------------------------------------------------------------------------
+# KO vs WT limma-voom DE run on methods listed in spatial_analysis.de_methods.
+# assay must match the platform's native Seurat assay name.
+
+pseudobulk_de:
+  cell_type_col: cell_type
+  condition_col: condition
+  animal_id_col: animal_id
+  assay:
+    xenium:   Xenium
+    merscope: Vizgen
+  min_reps: 2
+  contrast_name: KovsWt
+  keep_conditions:
+    - wt
+    - ko
+  contrast_levels:
+    - wt
+    - ko
+
+
+# ---------------------------------------------------------------------------
+annotations:
+  xenium_default:           {}
+  xenium_batch34_default:   {}
+  xenium_batch34_cellpose:  {}
+  xenium_batch34_proseg:    {}
+  merscope_default:         {}
+  merscope_cellpose:        {}
+  merscope_proseg:          {}
+
+
+# ---------------------------------------------------------------------------
+# GC zone assignments — populate after inspecting subclustered_gc.rds UMAPs
+# ---------------------------------------------------------------------------
+# Maps gc_subcluster ID (integer, as string key) -> zone label used in cell_type2.
+# Suggested labels: "Dark Zone" / "Light Zone"
+# Example when filled in:
+#   xenium_default:
+#     "0": "Dark Zone"
+#     "2": "Light Zone"
+# Leave as empty mapping ({}) to skip zone assignment:
+#   gc_zone will be NA for all GC cells and cell_type2 will equal cell_type.
+
+gc_zones:
+  xenium_default:           {}
+  xenium_batch34_default:   {}
+  xenium_batch34_cellpose:  {}
+  xenium_batch34_proseg:    {}
+  merscope_default:         {}
+  merscope_cellpose:        {}
+  merscope_proseg:          {}
