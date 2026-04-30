@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="img/logo.png" width="300" alt="SpatialBench logo">
+  <img src="img/logo.png" width="400" alt="SpatialBench logo">
 </p>
 
 <h1 align="center">SpatialBench: Comparative cross-platform benchmarking of high-resolution spatial transcriptomics using matched mouse lymphoid tissue</h1>
