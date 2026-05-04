@@ -53,7 +53,7 @@ only — it contains no KO samples, so DE is not run.
 
 ## Input data
 
-Nine cryosectioned mouse spleen samples captured on both platforms:
+Nine fresh-frozen mouse spleen samples captured on both platforms:
 
 | Sample ID | Genotype    |
 |-----------|-------------|
@@ -102,13 +102,35 @@ as `spatial_de_merscope_default`.
 
 ### 03 — Benchmarking
 
-Evaluates and compares segmentation methods across metrics (cell count, size
-distribution, transcript capture, spatial coherence). In development.
+Computes and compares metrics across segmentation methods and platforms,
+feeding data into the manuscript figure scripts.
+
+| Script | Description |
+|---|---|
+| `dataset_summary.R` | Dataset-level summary (bins, transcripts, sparsity) across VisiumHD, MERSCOPE, Xenium |
+| `qc_metrics.R` | Per-bin nCount/nFeature for all platforms and resolutions; FLEX vs scRNA-seq intersect |
+| `qc_backgrounds.R` | Background vs target counts, FDR, and Moran's I for MERSCOPE and Xenium |
+| `probe_rank.R` | Per-probe rank tables and background-overlap gene lists for MERSCOPE and Xenium |
+| `gene_comparison.R` | Pseudobulk count matrices across platforms for gene-comparison panels |
+| `scrna_correlation.R` | Pseudobulk correlations between 10X FLEX scRNA-seq and each ST platform |
+| `segmentation_quality.R` | Segmentation metrics, UMAP embeddings, cell type composition, MECR, and purity scores |
+| `cell_composition.R` | Cell type proportions across segmentation methods |
+| `de_concordance.R` | DE gene list overlap and log-fold-change concordance across methods |
+| `gc_zone_recovery.R` | GC light zone / dark zone recovery across segmentation methods |
 
 ### 04 — Manuscript figures
 
-Generates publication-ready figures and tables for the methods manuscript.
-In development.
+Assembles publication-ready figures (1–5) from benchmarking outputs.
+
+| Script | Description |
+|---|---|
+| `fig1.R` | Figure 1: cross-platform dataset summary (bar charts, Venn, scRNA-seq correlation) |
+| `fig2_qc.R` | Figure 2: platform QC panels (spatial scatter, count/gene boxplots, FLEX comparison) |
+| `fig2_background.R` | Figure 2: background/signal panels (background counts, Moran's I, FDR, probe rank-curves) |
+| `fig2_gene_comparison.R` | Figure 2: gene comparison panels (pseudobulk MDS, average-expression scatter) |
+| `fig3.R` | Figure 3: segmentation quality (metric boxplots, UMAP, composition, MECR, purity) |
+| `fig4.R` | Figure 4: DE concordance across methods (in development) |
+| `fig5.R` | Figure 5: GC zone recovery and spatial patterns (in development) |
 
 ---
 
@@ -126,21 +148,40 @@ profiles/
     preprocessing.smk            Snakemake rules for all preprocessing targets
 02_spatial_analysis/
   R/
-    preprocess_sample.R          QC, normalisation, SVG identification
+    preprocess_sample.R          QC, normalisation and BANKSY
     merge_samples.R              Combine per-sample objects into one cohort object
     embed_harmony.R              BANKSY embedding + Harmony batch correction
     annotate_clusters.R          Assign cell type labels from config["annotations"]
     subcluster_gc.R              GC B cell re-embedding and subclustering
-    merge_gc_zones.R             Inject DZ/LZ zone labels into the full object
+    merge_gc_zones.R             Add DZ/LZ zone labels into the full object
     pseudobulk_de.R              limma-voom pseudobulk KO vs WT DE per cell type
   rules/
     spatial_analysis.smk         Snakemake rules for all spatial analysis targets
 03_benchmarking/
-  R/                             (in development)
-  rules/                         (in development)
+  R/
+    dataset_summary.R            Dataset-level summary metrics across platforms
+    qc_metrics.R                 Per-bin QC metadata for all platforms and resolutions
+    qc_backgrounds.R             Background vs target counts, FDR, and Moran's I
+    probe_rank.R                 Per-probe rank tables and background-overlap gene lists
+    gene_comparison.R            Pseudobulk count matrices for cross-platform gene comparison
+    scrna_correlation.R          scRNA-seq vs ST pseudobulk correlation
+    segmentation_quality.R       Segmentation metrics, UMAP, composition, MECR, purity
+    cell_composition.R           Cell type proportions across platforms
+    de_concordance.R             DE concordance across segmentation methods
+    gc_zone_recovery.R           GC zone recovery across segmentation methods
+  rules/
+    benchmarking.smk             Snakemake rules for benchmarking targets
 04_manuscript/
-  R/                             (in development)
-  rules/                         (in development)
+  R/
+    fig1.R                       Figure 1: cross-platform dataset summary
+    fig2_qc.R                    Figure 2: platform QC panels
+    fig2_background.R            Figure 2: background and probe quality panels
+    fig2_gene_comparison.R       Figure 2: gene comparison panels
+    fig3.R                       Figure 3: segmentation quality comparison
+    fig4.R                       Figure 4: DE concordance (in development)
+    fig5.R                       Figure 5: GC zone recovery (in development)
+  rules/
+    manuscript.smk               Snakemake rules for manuscript figure targets
 utils/
   binning_utils.R                Shared helpers for binning workflows
   segmentation_utils.R           Shared helpers for segmentation workflows

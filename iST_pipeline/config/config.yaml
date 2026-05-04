@@ -2,6 +2,24 @@
 # xenium samples: dict of sample name -> full path to data directory (including /outs)
 # merscope samples: dict of sample name -> full path to data directory
 
+scrna:
+  path:       "/vast/projects/SpatialBench/scGEM_subcluster/scFlex_seu.rds"
+  assay:      "logcounts"
+  sample_col: "SampleID"
+  wt_ids:
+    - "709"
+    - "710"
+    - "713"
+
+visiumhd:
+  data_dir: "/vast/projects/SpatialBench/VisiumHD/processed_obj/normalized_obj_08016um"
+  samples:
+    batch33_167: "batch33_167.rds"
+    batch33_168: "batch33_168.rds"
+    batch33_709: "batch33_709.rds"
+    batch33_713: "batch33_713.rds"
+
+
 xenium:
   samples:
     wt709_batch27: /vast/projects/SpatialBench/data/xenium/G000218_Benchmarking/resegmented_xeniumranger_v2_0_1/resegmented_v2_0_1__0017329__Region_5/outs
@@ -156,10 +174,10 @@ spatial_analysis:
   banksy_k_geom: 12     # BANKSY geometric neighbourhood size
   npcs: 30              # PCA components computed on BANKSY features
   dims: 30              # dimensions used for Harmony, FindNeighbors, and UMAP
-  resolution: 0.6       # Louvain clustering resolution
+  resolution: 0.6       # Leiden clustering resolution
   umap_seed: 42         # UMAP random seed for reproducibility
   gc_dims: 15           # dimensions for GC B cell FindNeighbors and RunUMAP
-  gc_resolution: 0.2    # Louvain resolution for GC B cell subclustering
+  gc_resolution: 0.2    # Leiden resolution for GC B cell subclustering
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +190,7 @@ spatial_analysis:
 #     "1": "T cells"
 #     "2": "Macrophages"
 # Leave as empty mapping ({}) to run annotate_clusters.R in "Unannotated" mode.
+# Cell type annotation confirmed with manual inspection of marker gene expression.
 
 # ---------------------------------------------------------------------------
 # Pseudobulk DE parameters
@@ -198,13 +217,112 @@ pseudobulk_de:
 
 # ---------------------------------------------------------------------------
 annotations:
-  xenium_default:           {}
-  xenium_batch34_default:   {}
-  xenium_batch34_cellpose:  {}
-  xenium_batch34_proseg:    {}
-  merscope_default:         {}
-  merscope_cellpose:        {}
-  merscope_proseg:          {}
+  xenium_default:
+    "1": "Macrophages"
+    "2": "NK cells"
+    "3": "Naive B cells"
+    "4": "Macrophages"
+    "5": "Naive B cells"
+    "6": "Macrophages"
+    "7": "T cells"
+    "8": "Plasma B cells"
+    "9": "GC B cells"
+    "10": "Granulocytes"
+    "11": "T cells"
+  xenium_batch34_default:
+    "1": "NK cells"
+    "2": "Macrophages"
+    "3": "Naive B cells"
+    "4": "Naive B cells"
+    "5": "Plasma B cells"
+    "6": "Macrophages"
+    "7": "GC B cells"
+    "8": "T cells"
+    "9": "Naive B cells"
+    "10": "Granulocytes"
+    "11": "Macrophages"
+  xenium_batch34_cellpose:
+    "1":  "Naive B cells"
+    "2":  "Macrophages"      
+    "3":  "T cells"
+    "4":  "NK cells"
+    "5":  "Macrophages"      
+    "6":  "Macrophages"
+    "7":  "GC B cells"
+    "8":  "Plasma B cells"
+    "9":  "Granulocytes"
+    "10": "Plasma B cells"
+    "11": "T cells"
+    "12": "Macrophages"      
+    "13": "Naive B cells"
+    "14": "Plasma B cells"
+  xenium_batch34_proseg:
+    "1": "NK cells"
+    "2": "Macrophages"
+    "3": "Naive B cells"
+    "4": "Naive B cells"
+    "5": "Plasma B cells"
+    "6": "Macrophages"
+    "7": "GC B cells"
+    "8": "T cells"
+    "9": "Naive B cells"
+    "10": "Granulocytes"
+    "11": "Macrophages"
+  merscope_default:
+    "1": "Macrophages"
+    "2": "Naive B cells"
+    "3": "Macrophages"
+    "4": "Naive B cells"
+    "5": "T cells"
+    "6": "Macrophages"
+    "7": "GC B cells"
+    "8": "Granulocytes"
+    "9": "Plasma B cells"
+    "10": "T cells"
+    "11": "GC B cells"
+    "12": "Naive B cells"
+    "13": "Naive B cells"
+    "14": "Plasma B cells"
+    "15": "Macrophages"
+    "16": "Naive B cells"
+    "17": "Granulocytes"
+    "18": "Macrophages"
+    "19": "Macrophages"
+    "20": "Naive B cells"
+    "21": "Macrophages"
+    "22": "Macrophages"
+  merscope_cellpose:
+    "1": "Naive B cells"
+    "2": "Macrophages"
+    "3": "Macrophages"
+    "4": "T cells"
+    "5": "Macrophages"
+    "6": "GC B cells"
+    "7": "Plasma B cells"
+    "8": "Naive B cells"
+    "9": "Granulocytes"
+    "10": "T cells"
+    "11": "Naive B cells"
+    "12": "Naive B cells"
+    "13": "GC B cells"
+    "14": "Naive B cells"
+    "15": "Macrophages"
+    "16": "Naive B cells"
+    "17": "Plasma B cells"
+    "18": "Granulocytes"
+    "19": "Macrophages"
+    "20": "Macrophages"
+    "21": "Macrophages"
+  merscope_proseg:
+    "1": "Naive B cells"
+    "2": "Macrophages"
+    "3": "Macrophages"
+    "4": "T cells"
+    "5": "Macrophages"
+    "6": "Macrophages"
+    "7": "GC B cells"
+    "8": "Plasma B cells"
+    "9": "Granulocytes"
 
 
 # ---------------------------------------------------------------------------
@@ -214,16 +332,43 @@ annotations:
 # Suggested labels: "Dark Zone" / "Light Zone"
 # Example when filled in:
 #   xenium_default:
-#     "0": "Dark Zone"
+#     "1": "Dark Zone"
 #     "2": "Light Zone"
 # Leave as empty mapping ({}) to skip zone assignment:
 #   gc_zone will be NA for all GC cells and cell_type2 will equal cell_type.
 
 gc_zones:
-  xenium_default:           {}
+  xenium_default:
+    "1": "Dark Zone"
+    "2": "Light Zone"
   xenium_batch34_default:   {}
   xenium_batch34_cellpose:  {}
   xenium_batch34_proseg:    {}
   merscope_default:         {}
   merscope_cellpose:        {}
   merscope_proseg:          {}
+
+
+# ---------------------------------------------------------------------------
+# 03_benchmarking — segmentation quality comparison
+# ---------------------------------------------------------------------------
+# Pre-computed summary metrics CSVs produced by the segmentation analysis
+# workflow (external, not pipeline outputs). Their paths are flagged here so
+# segmentation_quality.R can be run reproducibly without hardcoded paths.
+# scrna_path: scGEM (10x scRNA-seq) reference used for negative marker purity.
+# scrna_celltype_col: cell type column in the scRNA object (Bcell_subcluster_combined).
+# celltype_col: cell type column in the annotated spatial Seurat objects.
+# xenium_keep_samples: Sample IDs to retain from the Xenium metrics CSV
+#   (batch34 regions only; these match the 'Sample' column in the CSV).
+segmentation_comp:
+  merscope_metrics_csv: /vast/projects/SpatialBench/analysis/segmentation_comparison/merscope_summary_metrics_merged_filtered_final.csv
+  xenium_metrics_csv: /vast/projects/SpatialBench/analysis/segmentation_comparison/xenium_summary_metrics_merged_filtered.csv
+  scrna_path: /vast/projects/SpatialBench/scGEM_subcluster/scGEM_seu.rds
+  scrna_celltype_col: Bcell_subcluster_combined
+  celltype_col: cell_type
+  xenium_keep_samples:
+    - 0032118__Region_1
+    - 0032118__Region_2
+    - 0032118__Region_3
+    - 0032118__Region_4
+    - 0032118__Region_5

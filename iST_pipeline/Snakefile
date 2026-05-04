@@ -2,6 +2,8 @@ configfile: "config/config.yaml"
 
 include: "01_preprocessing/rules/preprocessing.smk"
 include: "02_spatial_analysis/rules/spatial_analysis.smk"
+include: "03_benchmarking/rules/benchmarking.smk"
+include: "04_manuscript/rules/manuscript.smk"
 
 
 # Default target: build all binned objects for all platforms and resolutions
@@ -385,4 +387,162 @@ rule spatial_de_all:
             "results/02_spatial_analysis/{method}/pseudobulk_de/de_results.rds",
             method = config["spatial_analysis"]["de_methods"],
         )
+
+
+# ---------------------------------------------------------------------------
+# 03_benchmarking — named sub-targets
+# ---------------------------------------------------------------------------
+# Run individual benchmarking steps:
+#   snakemake benchmarking_dataset_summary
+#   snakemake benchmarking_scrna_correlation
+#   snakemake benchmarking_qc_metrics
+#   snakemake benchmarking_qc_backgrounds
+#   snakemake benchmarking_probe_rank
+#   snakemake benchmarking_gene_comparison
+#   snakemake benchmarking_segmentation_quality
+# Run all benchmarking steps:
+#   snakemake benchmarking_all
+
+rule benchmarking_dataset_summary:
+    input:
+        "results/03_benchmarking/dataset_summary/metrics.rds",
+        "results/03_benchmarking/dataset_summary/gene_lists.rds"
+
+
+rule benchmarking_scrna_correlation:
+    input:
+        "results/03_benchmarking/scrna_correlation/avg_expr.rds"
+
+
+rule benchmarking_qc_metrics:
+    input:
+        "results/03_benchmarking/qc_metrics/metadata_combined.rds"
+
+
+rule benchmarking_qc_backgrounds:
+    input:
+        "results/03_benchmarking/qc_backgrounds/background_per_sample.rds",
+        "results/03_benchmarking/qc_backgrounds/fdr_results.rds"
+
+
+rule benchmarking_probe_rank:
+    input:
+        "results/03_benchmarking/probe_rank/ranked_plat.rds",
+        "results/03_benchmarking/probe_rank/label_pool_genes.csv"
+
+
+rule benchmarking_gene_comparison:
+    input:
+        "results/03_benchmarking/gene_comparison/dge.rds",
+        "results/03_benchmarking/gene_comparison/counts_mat.rds"
+
+
+rule benchmarking_segmentation_quality:
+    input:
+        "results/03_benchmarking/segmentation_quality/metrics_long.rds",
+        "results/03_benchmarking/segmentation_quality/umap_coords.rds",
+        "results/03_benchmarking/segmentation_quality/cell_type_counts.rds",
+        "results/03_benchmarking/segmentation_quality/mecr_table.rds",
+        "results/03_benchmarking/segmentation_quality/purity_summary.rds",
+        "results/03_benchmarking/segmentation_quality/purity_ct.rds"
+
+
+rule benchmarking_all:
+    input:
+        "results/03_benchmarking/dataset_summary/metrics.rds",
+        "results/03_benchmarking/dataset_summary/gene_lists.rds",
+        "results/03_benchmarking/scrna_correlation/avg_expr.rds",
+        "results/03_benchmarking/qc_metrics/metadata_combined.rds",
+        "results/03_benchmarking/qc_backgrounds/background_per_sample.rds",
+        "results/03_benchmarking/qc_backgrounds/fdr_results.rds",
+        "results/03_benchmarking/probe_rank/ranked_plat.rds",
+        "results/03_benchmarking/probe_rank/label_pool_genes.csv",
+        "results/03_benchmarking/gene_comparison/dge.rds",
+        "results/03_benchmarking/gene_comparison/counts_mat.rds",
+        "results/03_benchmarking/segmentation_quality/metrics_long.rds",
+        "results/03_benchmarking/segmentation_quality/umap_coords.rds",
+        "results/03_benchmarking/segmentation_quality/cell_type_counts.rds",
+        "results/03_benchmarking/segmentation_quality/mecr_table.rds",
+        "results/03_benchmarking/segmentation_quality/purity_summary.rds",
+        "results/03_benchmarking/segmentation_quality/purity_ct.rds"
+
+
+# ---------------------------------------------------------------------------
+# 04_manuscript — named sub-targets
+# ---------------------------------------------------------------------------
+# Build individual figures:
+#   snakemake manuscript_fig1
+#   snakemake manuscript_fig2_qc
+#   snakemake manuscript_fig2_background
+#   snakemake manuscript_fig2_gene_comparison
+#   snakemake manuscript_fig3
+# Build all manuscript figures:
+#   snakemake manuscript_all
+
+rule manuscript_fig1:
+    input:
+        "figures/fig1/fig1_barplot.pdf",
+        "figures/fig1/fig1_venn.pdf",
+        "figures/fig1/fig1_scrna_correlation.pdf"
+
+
+rule manuscript_fig2_qc:
+    input:
+        "figures/fig2/spatial_ncount.pdf",
+        "figures/fig2/spatial_nfeature.pdf",
+        "figures/fig2/qc_counts_spatial.pdf",
+        "figures/fig2/qc_genes_spatial.pdf"
+
+
+rule manuscript_fig2_background:
+    input:
+        "figures/fig2/background_vs_target.pdf",
+        "figures/fig2/fdr.pdf",
+        "figures/fig2/probe_scurves.pdf"
+
+
+rule manuscript_fig2_gene_comparison:
+    input:
+        "figures/fig2/pseudobulk_mds.pdf",
+        "figures/fig2/avgexpr_scatter_visiumhd_merscope.pdf",
+        "figures/fig2/avgexpr_scatter_visiumhd_xenium.pdf",
+        "figures/fig2/avgexpr_scatter_merscope_xenium.pdf"
+
+
+rule manuscript_fig3:
+    input:
+        "figures/fig3/metrics_merscope.pdf",
+        "figures/fig3/metrics_xenium.pdf",
+        "figures/fig3/umap_merscope.pdf",
+        "figures/fig3/umap_xenium.pdf",
+        "figures/fig3/cell_counts.pdf",
+        "figures/fig3/mecr.pdf",
+        "figures/fig3/purity_dotplot.pdf",
+        "figures/fig3/purity_heatmap.pdf"
+
+
+rule manuscript_all:
+    input:
+        "figures/fig1/fig1_barplot.pdf",
+        "figures/fig1/fig1_venn.pdf",
+        "figures/fig1/fig1_scrna_correlation.pdf",
+        "figures/fig2/spatial_ncount.pdf",
+        "figures/fig2/spatial_nfeature.pdf",
+        "figures/fig2/qc_counts_spatial.pdf",
+        "figures/fig2/qc_genes_spatial.pdf",
+        "figures/fig2/background_vs_target.pdf",
+        "figures/fig2/fdr.pdf",
+        "figures/fig2/probe_scurves.pdf",
+        "figures/fig2/pseudobulk_mds.pdf",
+        "figures/fig2/avgexpr_scatter_visiumhd_merscope.pdf",
+        "figures/fig2/avgexpr_scatter_visiumhd_xenium.pdf",
+        "figures/fig2/avgexpr_scatter_merscope_xenium.pdf",
+        "figures/fig3/metrics_merscope.pdf",
+        "figures/fig3/metrics_xenium.pdf",
+        "figures/fig3/umap_merscope.pdf",
+        "figures/fig3/umap_xenium.pdf",
+        "figures/fig3/cell_counts.pdf",
+        "figures/fig3/mecr.pdf",
+        "figures/fig3/purity_dotplot.pdf",
+        "figures/fig3/purity_heatmap.pdf"
 

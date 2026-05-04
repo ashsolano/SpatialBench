@@ -1,7 +1,7 @@
 # Purpose: GC B cell subclustering. Subsets cells annotated as "GC B cells"
 #          from an annotated Seurat object and runs an independent embedding:
 #          ScaleData -> PCA (pca.gc) -> Harmony (harmony.gc, by sample_name)
-#          -> SNN graph -> Louvain clustering -> UMAP (umap.gc).
+#          -> SNN graph -> Leiden clustering -> UMAP (umap.gc).
 #          Cluster labels are stored in gc_subcluster.
 # Inputs:  Annotated Seurat object from annotate_clusters.R (must contain
 #          BANKSY assay, sample_name metadata, and cell_type == "GC B cells")
