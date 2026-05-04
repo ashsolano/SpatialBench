@@ -91,15 +91,14 @@ The following analysis workflows are available in this repository. Each folder c
 
 If you use the SpatialBench dataset or workflows, please cite:
 
-Ashleigh Solano, Raymond K. H. Yip, Changqing Wang, Daniela Amann-Zalcenstein,
+Ashleigh N. Solano, Raymond K. H. Yip, Changqing Wang, Daniela Amann-Zalcenstein,
 Pradeep Rajasekhar, Ishrat Zaman, Allan Motyer, Marek Cmero, Yang Xu, Yining Pan,
 Casey J. A. Anttila, Stephanie I. Studniberg, Peter F. Hickey, Layla Wang,
 Callum J. Sargeant, Ling Ling, Yunshun Chen, Ruvimbo D. Mishi, Lisa J. Ioannidis,
 Kim L. Good-Jacobson, Hamish W. King, Kelly L. Rogers, Diana S. Hansen,
-Rory Bowden and Matthew E. Ritchie.
-Comparative cross-platform benchmarking of high-resolution spatial transcriptomics using matched mouse lymphoid tissue.
-*(manuscript in preparation)*
-
+Rory Bowden, Matthew E. Ritchie.
+SpatialBench: Comparative cross-platform benchmarking of high-resolution spatial transcriptomics using matched mouse lymphoid tissue.
+*bioRxiv* 2026.04.29.721531; doi: [https://doi.org/10.64898/2026.04.29.721531](https://doi.org/10.64898/2026.04.29.721531)
 
 ## Acknowledgements
 
