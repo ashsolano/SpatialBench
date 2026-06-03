@@ -1,0 +1,11 @@
+sample: "sample_name"
+algorithm_json: "/path/to/cellpose2_custom.json"
+images_dir: "/path/to/merscope_output/images"
+um_to_mosaic_file: "/path/to/merscope_output/images/micron_to_mosaic_pixel_transform.csv"
+detected_transcripts: "/path/to/merscope_output/detected_transcripts.csv"
+input_vzg: "/path/to/merscope_output/sample_name.vzg"
+red_stain_name: "Cellbound2"
+green_stain_name: "Cellbound3"
+blue_stain_name: "DAPI"
+transcript_count_threshold: 5
+volume_filter_threshold: 100
