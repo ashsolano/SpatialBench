@@ -242,7 +242,7 @@ Collates all generated metrics into final benchmarking tables used for downstrea
 cellpose_segmentation_pipeline/
 │
 ├── configs/
-│   ├── Batch26_region2_KO168_NextFlow...
+│   ├── example_nextflow_config.yaml
 │   └── cellpose2_custom.json
 │
 ├── scripts/
