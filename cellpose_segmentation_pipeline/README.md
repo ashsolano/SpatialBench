@@ -2,9 +2,9 @@
 
 ## Overview
 
-This repository contains the training data, trained Cellpose models, configuration files, and analysis scripts used to develop and evaluate custom Cellpose segmentation models for MERSCOPE and Xenium spatial transcriptomics datasets.
+This repository contains configuration files, and analysis scripts used to develop and evaluate custom Cellpose segmentation models for MERSCOPE and Xenium spatial transcriptomics datasets. The training data and final trained Cellpose models are on Zenodo [here](https://zenodo.org/). 
 
-The workflow includes:
+The full Cellpose workflow includes:
 
 - Training data preparation
 - Data augmentation
@@ -17,7 +17,7 @@ This repository accompanies the Cellpose benchmarking component of the SpatialBe
 
 ---
 
-## Input Data
+## Input Data on Zenodo
 
 Training and test datasets are provided for both technologies.
 
@@ -106,7 +106,7 @@ This workflow was used to generate the final Xenium Cellpose model included in t
 
 ## Trained Models
 
-Final trained Cellpose models are provided in:
+Final trained Cellpose models are provided on Zenodo in:
 
 ```text
 models/
@@ -244,19 +244,6 @@ cellpose_segmentation_pipeline/
 ├── configs/
 │   ├── Batch26_region2_KO168_NextFlow...
 │   └── cellpose2_custom.json
-│
-├── data/
-│   ├── MERSCOPE/
-│   │   ├── train/
-│   │   └── test/
-│   │
-│   └── Xenium/
-│       ├── train/
-│       └── test/
-│
-├── models/
-│   ├── cyto2_GaussianBlur_ColorJitter_GaussNoise
-│   └── cyto2_SpleenXenium_XeniumROIs_v2
 │
 ├── scripts/
 │   ├── augment_dataset.py
