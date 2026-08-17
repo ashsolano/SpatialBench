@@ -127,10 +127,14 @@ LoadXenium_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Xe
 }
 
 
-ReadVizgen_8um <- function(data.dir, resolution = 8, z = 3L, filter = NA_character_) {
+ReadVizgen_binned <- function(data.dir, resolution = 8, z = "all", filter = NA_character_) {
 
   mx <- data.table::fread(file.path(data.dir, "detected_transcripts.csv"), sep = ",", verbose = FALSE)
-  mx <- mx[mx$global_z == z, , drop = FALSE]
+
+  # z = "all" keeps every z-plane; otherwise filter down to the requested plane
+  if (!identical(z, "all")) {
+    mx <- mx[mx$global_z == z, , drop = FALSE]
+  }
 
   if (!is.na(filter)) {
     mx <- mx[!grepl(pattern = filter, x = mx$gene), , drop = FALSE]
@@ -177,9 +181,12 @@ ReadVizgen_8um <- function(data.dir, resolution = 8, z = 3L, filter = NA_charact
 }
 
 
-LoadVizgen_8um <- function(data.dir, resolution = 8, fov = "fov", assay = "Vizgen") {
+LoadVizgen_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Vizgen", z = "all") {
 
-  data <- ReadVizgen_8um(data.dir, resolution = resolution, z = 3L)
+  # All z-planes are used by default to match the Xenium binning workflow,
+  # which does not filter by z-plane; addresses reviewer concerns about
+  # unmatched z-plane handling between platforms.
+  data <- ReadVizgen_binned(data.dir, resolution = resolution, z = z)
 
   vizgen.obj <- CreateSeuratObject(counts = data$binned_matrices[["Gene Expression"]], assay = assay)
 

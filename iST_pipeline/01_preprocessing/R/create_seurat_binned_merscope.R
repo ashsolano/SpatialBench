@@ -41,7 +41,7 @@ message("Output dir: ", opt$out_dir)
 
 start_time <- Sys.time()
 
-obj <- LoadVizgen_8um(
+obj <- LoadVizgen_binned(
   data.dir   = opt$data_dir,
   resolution = opt$resolution,
   fov        = opt$sample_name,
