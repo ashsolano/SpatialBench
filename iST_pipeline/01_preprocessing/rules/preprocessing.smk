@@ -78,6 +78,184 @@ rule create_seurat_binned_merscope:
         """
 
 
+# Rule:   filter_binned_xenium
+# Purpose: Post-processing QC on a binned Xenium object — drop empty bins and
+#          remove spatially isolated bins (DBSCAN) outside the dominant tissue
+#          cluster. Also writes a before/after spatial QC plot alongside the
+#          filtered RDS.
+#
+# Config keys used:
+#   config["xenium"]["samples"]   — dict of sample name -> full path to data directory
+#   config["bin_resolutions"]     — list of resolutions, e.g. [8, 16]
+
+rule filter_binned_xenium:
+    input:
+        rds = "results/01_preprocessing/xenium_{resolution}um/{sample}_{resolution}um.rds"
+    output:
+        rds = "results/01_preprocessing/xenium_{resolution}um_filtered/{sample}_{resolution}um_filtered.rds"
+    log:
+        "logs/01_preprocessing/xenium_{resolution}um_filtered/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/xenium_{resolution}um_filtered/{sample}.txt"
+    params:
+        assay = "Xenium",
+        # DBSCAN neighbourhood radius scales with bin size: 15um for 8um bins,
+        # 20um for 16um bins
+        eps   = lambda wc: 15 if wc.resolution == "8" else 20,
+        # Xenium keeps only substantial tissue clusters — 5000 drops small
+        # fragments that were slipping through at the previous 1000 threshold
+        min_cluster_size = 5000
+    envmodules:
+        "R/4.4.1",
+        "geos/3.12.1",
+        "hdf5/1.12.3",
+        "proj/9.4.0",
+        "gdal/3.9.0"
+    resources:
+        mem_mb        = 20000,
+        cpus_per_task = 2,
+        runtime       = 120,
+        partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 01_preprocessing/R/filter_binned.R \
+            --input_rds {input.rds} \
+            --out_rds   {output.rds} \
+            --assay     {params.assay} \
+            --eps       {params.eps} \
+            --min_cluster_size {params.min_cluster_size} \
+            --use_adaptive_threshold \
+            > {log} 2>&1
+        """
+
+
+# Rule:   filter_binned_merscope
+# Purpose: Post-processing QC on a binned MERSCOPE object — drop empty bins
+#          and remove spatially isolated bins (DBSCAN) outside the dominant
+#          tissue cluster. Also writes a before/after spatial QC plot
+#          alongside the filtered RDS.
+#
+# Config keys used:
+#   config["merscope"]["samples"]  — dict of sample name -> full path to data directory
+#   config["bin_resolutions"]      — list of resolutions, e.g. [8, 16]
+
+rule filter_binned_merscope:
+    input:
+        rds = "results/01_preprocessing/merscope_{resolution}um/{sample}_{resolution}um.rds"
+    output:
+        rds = "results/01_preprocessing/merscope_{resolution}um_filtered/{sample}_{resolution}um_filtered.rds"
+    log:
+        "logs/01_preprocessing/merscope_{resolution}um_filtered/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/merscope_{resolution}um_filtered/{sample}.txt"
+    params:
+        assay     = "Vizgen",
+        # DBSCAN neighbourhood radius scales with bin size: 25um for 8um bins,
+        # 30um for 16um bins
+        eps       = lambda wc: 25 if wc.resolution == "8" else 30,
+        # MERSCOPE has no comparable background signal to Xenium, so adaptive
+        # thresholding is disabled in favour of a fixed, low min_count
+        min_count = 1,
+        # MERSCOPE has legitimate smaller tissue pieces, so keep the default
+        # (lower) cluster size threshold rather than Xenium's 5000
+        min_cluster_size = 1000
+    envmodules:
+        "R/4.4.1",
+        "geos/3.12.1",
+        "hdf5/1.12.3",
+        "proj/9.4.0",
+        "gdal/3.9.0"
+    resources:
+        mem_mb        = 20000,
+        cpus_per_task = 2,
+        runtime       = 120,
+        partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 01_preprocessing/R/filter_binned.R \
+            --input_rds {input.rds} \
+            --out_rds   {output.rds} \
+            --assay     {params.assay} \
+            --eps       {params.eps} \
+            --min_count {params.min_count} \
+            --min_cluster_size {params.min_cluster_size} \
+            --no_adaptive_threshold \
+            > {log} 2>&1
+        """
+
+
+# Rule:   combine_filter_qc_xenium
+# Purpose: Combine every sample's before/after filtering QC PNG (produced by
+#          filter_binned_xenium) into a single multi-page PDF for one
+#          resolution. Depends on all filter_binned_xenium outputs for that
+#          resolution, so filtering finishes for every sample first.
+#
+# Config keys used:
+#   config["xenium"]["samples"]   — dict of sample name -> full path to data directory
+
+rule combine_filter_qc_xenium:
+    input:
+        rds = lambda wc: expand(
+            "results/01_preprocessing/xenium_{resolution}um_filtered/{sample}_{resolution}um_filtered.rds",
+            sample     = config["xenium"]["samples"],
+            resolution = wc.resolution,
+        )
+    output:
+        pdf = "results/01_preprocessing/xenium_{resolution}um_filtered/filter_qc_all.pdf"
+    log:
+        "logs/01_preprocessing/xenium_{resolution}um_filtered/combine_filter_qc.log"
+    benchmark:
+        "benchmarks/01_preprocessing/xenium_{resolution}um_filtered/combine_filter_qc.txt"
+    envmodules:
+        "ImageMagick/7.1.2-18"
+    resources:
+        mem_mb        = 4000,
+        cpus_per_task = 1,
+        runtime       = 30,
+        partition     = "regular"
+    shell:
+        """
+        convert results/01_preprocessing/xenium_{wildcards.resolution}um_filtered/*_filter_qc.png {output.pdf} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   combine_filter_qc_merscope
+# Purpose: Combine every sample's before/after filtering QC PNG (produced by
+#          filter_binned_merscope) into a single multi-page PDF for one
+#          resolution. Depends on all filter_binned_merscope outputs for that
+#          resolution, so filtering finishes for every sample first.
+#
+# Config keys used:
+#   config["merscope"]["samples"]  — dict of sample name -> full path to data directory
+
+rule combine_filter_qc_merscope:
+    input:
+        rds = lambda wc: expand(
+            "results/01_preprocessing/merscope_{resolution}um_filtered/{sample}_{resolution}um_filtered.rds",
+            sample     = config["merscope"]["samples"],
+            resolution = wc.resolution,
+        )
+    output:
+        pdf = "results/01_preprocessing/merscope_{resolution}um_filtered/filter_qc_all.pdf"
+    log:
+        "logs/01_preprocessing/merscope_{resolution}um_filtered/combine_filter_qc.log"
+    benchmark:
+        "benchmarks/01_preprocessing/merscope_{resolution}um_filtered/combine_filter_qc.txt"
+    envmodules:
+        "ImageMagick/7.1.2-18"
+    resources:
+        mem_mb        = 4000,
+        cpus_per_task = 1,
+        runtime       = 30,
+        partition     = "regular"
+    shell:
+        """
+        convert results/01_preprocessing/merscope_{wildcards.resolution}um_filtered/*_filter_qc.png {output.pdf} \
+            > {log} 2>&1
+        """
+
+
 # Rule:   create_seurat_segmented_xenium
 # Purpose: Create a cell-segmented Seurat object for one Xenium sample using
 #          a named segmentation method (default vendor or Cellpose).

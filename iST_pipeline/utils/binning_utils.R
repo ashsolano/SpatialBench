@@ -13,6 +13,7 @@ library(stringr)
 library(arrow)
 library(purrr)
 library(Seurat)
+library(dbscan)
 
 
 ReadXenium_binned <- function(data.dir, resolution = 8, pixel_size = 1, mols.qv.threshold = 20) {
@@ -217,4 +218,84 @@ LoadVizgen_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Vi
   vizgen.obj[[fov]] <- coords
 
   return(vizgen.obj)
+}
+
+
+# Detect the background/tissue nCount boundary from the local minimum between
+# the background and signal peaks of the count distribution.
+find_background_threshold <- function(counts, max_count = 500, min_thresh = 5) {
+  counts <- counts[counts > 0 & counts <= max_count]
+  if (length(counts) == 0) return(min_thresh)
+  d <- density(counts, bw = 2)
+  dy <- diff(d$y)
+  minima_idx <- which(dy[-1] > 0 & dy[-length(dy)] < 0) + 1
+  minima_x   <- d$x[minima_idx]
+  thresh <- minima_x[minima_x > min_thresh][1]
+  if (is.na(thresh)) thresh <- min_thresh
+  thresh
+}
+
+
+# Post-processing QC: drop background/empty bins and remove spatially isolated
+# bins (e.g. debris, edge artefacts) via DBSCAN. min_cluster_size lets more
+# than one tissue cluster survive, for samples with multiple tissue pieces.
+filter_binned_seurat <- function(obj, assay = "Vizgen",
+                                  min_count = 1,
+                                  use_adaptive_threshold = TRUE,
+                                  eps = 15, minPts = 5,
+                                  min_cluster_size = 1000) {
+
+  fov_name <- names(obj@images)[1]
+  fov      <- obj@images[[fov_name]]
+  cents    <- fov@boundaries$centroids@coords
+  rownames(cents) <- colnames(obj)
+
+  df <- data.frame(
+    x      = cents[, 1],
+    y      = cents[, 2],
+    nCount = obj@meta.data[[paste0("nCount_", assay)]],
+    row.names = colnames(obj)
+  )
+
+  # Adaptive threshold finds the valley between the background and tissue
+  # peaks of the count distribution; otherwise fall back to a fixed min_count
+  if (use_adaptive_threshold) {
+    min_count <- find_background_threshold(df$nCount)
+    message("Adaptive background threshold: nCount >= ", round(min_count, 2))
+  }
+
+  df_nonempty  <- df[df$nCount >= min_count, , drop = FALSE]
+
+  cl            <- dbscan::dbscan(as.matrix(df_nonempty[, c("x", "y")]), eps = eps, minPts = minPts)$cluster
+  cluster_sizes <- table(cl[cl > 0])
+  keep_clusters <- as.integer(names(cluster_sizes)[cluster_sizes >= min_cluster_size])
+
+  # Fall back to the single largest cluster if none meet min_cluster_size
+  if (length(keep_clusters) == 0) {
+    keep_clusters <- as.integer(names(which.max(cluster_sizes)))
+  }
+
+  keep_cells <- rownames(df_nonempty)[cl %in% keep_clusters]
+
+  centroids_keep <- CreateCentroids(data.frame(
+    x    = df_nonempty[keep_cells, "x"],
+    y    = df_nonempty[keep_cells, "y"],
+    cell = keep_cells
+  ))
+
+  fov_keep <- CreateFOV(
+    coords = centroids_keep,
+    assay  = DefaultAssay(fov),
+    key    = Key(fov),
+    name   = names(fov@boundaries)[1]
+  )
+
+  obj_no_fov        <- obj
+  obj_no_fov@images <- list()
+  obj_filt          <- subset(obj_no_fov, cells = keep_cells)
+  obj_filt[[fov_name]] <- fov_keep
+  DefaultFOV(obj_filt) <- fov_name
+
+  message("Filtered: ", ncol(obj), " -> ", ncol(obj_filt), " bins")
+  obj_filt
 }
