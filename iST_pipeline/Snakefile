@@ -78,6 +78,42 @@ rule merscope_binning_filtered:
         )
 
 
+# STalign registration — only the 4 matched samples per platform
+# (config["stalign"]["matched_samples"]). 8um only for now; the *_16um
+# targets are separate so 16um can be brought online independently once
+# ready.
+rule xenium_binning_aligned:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_8um_aligned/{sample}_8um_aligned.rds",
+            sample = config["stalign"]["matched_samples"]["xenium"].values(),
+        )
+
+
+rule merscope_binning_aligned:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_8um_aligned/{sample}_8um_aligned.rds",
+            sample = config["stalign"]["matched_samples"]["merscope"].values(),
+        )
+
+
+rule xenium_binning_aligned_16um:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_16um_aligned/{sample}_16um_aligned.rds",
+            sample = config["stalign"]["matched_samples"]["xenium"].values(),
+        )
+
+
+rule merscope_binning_aligned_16um:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_16um_aligned/{sample}_16um_aligned.rds",
+            sample = config["stalign"]["matched_samples"]["merscope"].values(),
+        )
+
+
 rule xenium_default:
     input:
         expand(

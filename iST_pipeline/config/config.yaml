@@ -94,6 +94,69 @@ merscope_proseg:
     ko168_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218BenchmarkingBatch26_VMSC04501_region_2/output
 
 
+# ---------------------------------------------------------------------------
+# STalign registration (01_preprocessing/R/align_binned.R + Python/align_binned.py)
+# ---------------------------------------------------------------------------
+# Maps each matched animal ID to the sample keys used elsewhere in this config,
+# and pre-computed VisiumHD low-res scale factors (Space Ranger
+# scalefactors_json.json -> tissue_lowres_scalef)
+stalign:
+  python_bin: /home/users/allstaff/solano.a/.virtualenvs/r-reticulate/bin/python
+  matched_samples:
+    merscope:
+      ko167: ko167_batch10
+      ko168: ko168_batch9
+      wt709: wt709_batch13
+      wt713: wt713_batch13
+    xenium:
+      ko167: ko167_batch24
+      ko168: ko168_batch27
+      wt709: wt709_batch27
+      wt713: wt713_batch24
+  visiumhd:
+    ko167: batch33_167
+    ko168: batch33_168
+    wt709: batch33_709
+    wt713: batch33_713
+  visiumhd_scalefactors: #(Space Ranger scalefactors_json.json -> tissue_lowres_scalef)
+    batch33_167: 0.027210884 
+    batch33_168: 0.024467824
+    batch33_709: 0.027233116
+    batch33_713: 0.027233116
+  # Landmark points picked during interactive STalign registration (see
+  # STalign_reticulate.Rmd), in (y, x) order — one [y, x] pair per row, same
+  # order as source/target. 
+  landmarks:
+    ko167:
+      merscope:
+        source: [[5576, 6988.4], [4106, 5608.4], [3116, 5008.4], [1556, 4018.4], [416, 4738.4], [1346, 8338.4], [3146, 9778.4], [4526, 8638.4]]
+        target: [[380, 39], [431, 254], [411, 355], [400, 554], [288, 580], [60, 336], [30, 78], [214, 43]]
+      xenium:
+        source: [[2345.6, 670.4], [4475.6, 5800.4], [965.6, 5800.4]]
+        target: [[261, 582], [41, 71], [390, 46]]
+    ko168:
+      merscope:
+        source: [[6606, 2580.8], [3816, 4980.8], [1536, 6210.8], [306, 4620.8], [1656, 2490.8], [3366, 360.8], [4896, 1470.8], [1806, 4380.8]]
+        target: [[474, 408], [240, 317], [42, 274], [43, 122], [200, 64], [426, 26], [442, 187], [164, 182]]
+      xenium:
+        source: [[2809.2, 7366.8], [4819.2, 1846.8], [1189.2, 5866.8], [649.2, 526.8]]
+        target: [[10, 198], [498, 413], [177, 62], [502, 24]]
+    wt709:
+      merscope:
+        source: [[10202, 8066.4], [9602, 11996.4], [6992, 7496.4], [5852, 9806.4]]
+        target: [[524, 65], [514, 461], [240, 91], [104, 293]]
+      xenium:
+        source: [[907.2, 667.6], [817.2, 3337.6], [2257.2, 5917.6], [5347.2, 847.6], [5617.2, 3187.6], [2527.2, 5887.6]]
+        target: [[532, 43], [236, 66], [31, 205], [536, 482], [308, 546], [32, 263]]
+    wt713:
+      merscope:
+        source: [[8155.6, 558.8], [6145.6, 438.8], [4975.6, 258.8], [4315.6, 2478.8], [4495.6, 4758.8], [6415.6, 4728.8], [9325.6, 2478.8]]
+        target: [[374, 564], [184, 543], [55, 532], [38, 286], [124, 32], [324, 66], [550, 367]]
+      xenium:
+        source: [[2491.2, 199.6], [3811.2, 589.6], [5071.2, 409.6], [5221.2, 2719.6], [3961.2, 5749.6], [2071.2, 5149.6], [301.2, 3799.6]]
+        target: [[343, 569], [171, 537], [51, 523], [26, 332], [121, 32], [315, 67], [535, 158]]
+
+
 # Bin sizes in microns — one RDS is produced per sample per resolution
 bin_resolutions:
   - 8
