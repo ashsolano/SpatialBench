@@ -26,7 +26,7 @@ rule create_seurat_binned_xenium:
         mem_mb        = 60000,
         cpus_per_task = 4,
         runtime       = 600,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_binned_xenium.R \
@@ -66,7 +66,7 @@ rule create_seurat_binned_merscope:
         mem_mb        = 40000,
         cpus_per_task = 4,
         runtime       = 600,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_binned_merscope.R \
@@ -115,7 +115,7 @@ rule filter_binned_xenium:
         mem_mb        = 20000,
         cpus_per_task = 2,
         runtime       = 120,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/filter_binned.R \
@@ -169,7 +169,7 @@ rule filter_binned_merscope:
         mem_mb        = 20000,
         cpus_per_task = 2,
         runtime       = 120,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/filter_binned.R \
@@ -212,7 +212,7 @@ rule combine_filter_qc_xenium:
         mem_mb        = 4000,
         cpus_per_task = 1,
         runtime       = 30,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         convert results/01_preprocessing/xenium_{wildcards.resolution}um_filtered/*_filter_qc.png {output.pdf} \
@@ -248,10 +248,96 @@ rule combine_filter_qc_merscope:
         mem_mb        = 4000,
         cpus_per_task = 1,
         runtime       = 30,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         convert results/01_preprocessing/merscope_{wildcards.resolution}um_filtered/*_filter_qc.png {output.pdf} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   align_binned_xenium
+# Purpose: Apply a previously-fitted STalign registration (affine + LDDMM) to
+#          a filtered, binned Xenium object, mapping its bin centroids into
+#          VisiumHD target coordinate space. Only runs for the 4 samples with
+#          manually-picked landmarks (config["stalign"]["landmarks"]).
+#
+# Config keys used:
+#   config["stalign"] — python_bin, matched_samples, visiumhd,
+#                        visiumhd_scalefactors, landmarks
+#   config["visiumhd"] — data_dir, samples
+
+rule align_binned_xenium:
+    wildcard_constraints:
+        sample     = "ko167_batch24|ko168_batch27|wt709_batch27|wt713_batch24",
+        resolution = "8|16"
+    input:
+        rds = "results/01_preprocessing/xenium_{resolution}um_filtered/{sample}_{resolution}um_filtered.rds"
+    output:
+        rds = "results/01_preprocessing/xenium_{resolution}um_aligned/{sample}_{resolution}um_aligned.rds"
+    log:
+        "logs/01_preprocessing/xenium_{resolution}um_aligned/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/xenium_{resolution}um_aligned/{sample}.txt"
+    params:
+        animal_id = lambda wc: wc.sample.split("_batch")[0]
+    resources:
+        mem_mb        = 40000,
+        runtime       = 30,
+        slurm_partition     = "gpuq",
+        gres          = "gpu:A30:1"
+    shell:
+        """
+        module load R/4.4.1 && Rscript --vanilla 01_preprocessing/R/align_binned.R \
+            --input_rds  {input.rds} \
+            --platform   xenium \
+            --sample     {params.animal_id} \
+            --resolution {wildcards.resolution} \
+            --config     config/config.yaml \
+            --out_rds    {output.rds} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   align_binned_merscope
+# Purpose: Apply a previously-fitted STalign registration (affine + LDDMM) to
+#          a filtered, binned MERSCOPE object, mapping its bin centroids into
+#          VisiumHD target coordinate space. Only runs for the 4 samples with
+#          manually-picked landmarks (config["stalign"]["landmarks"]).
+#
+# Config keys used:
+#   config["stalign"] — python_bin, matched_samples, visiumhd,
+#                        visiumhd_scalefactors, landmarks
+#   config["visiumhd"] — data_dir, samples
+
+rule align_binned_merscope:
+    wildcard_constraints:
+        sample     = "ko167_batch10|ko168_batch9|wt709_batch13|wt713_batch13",
+        resolution = "8|16"
+    input:
+        rds = "results/01_preprocessing/merscope_{resolution}um_filtered/{sample}_{resolution}um_filtered.rds"
+    output:
+        rds = "results/01_preprocessing/merscope_{resolution}um_aligned/{sample}_{resolution}um_aligned.rds"
+    log:
+        "logs/01_preprocessing/merscope_{resolution}um_aligned/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/merscope_{resolution}um_aligned/{sample}.txt"
+    params:
+        animal_id = lambda wc: wc.sample.split("_batch")[0]
+    resources:
+        mem_mb        = 40000,
+        runtime       = 30,
+        slurm_partition     = "gpuq",
+        gres          = "gpu:A30:1"
+    shell:
+        """
+        module load R/4.4.1 && Rscript --vanilla 01_preprocessing/R/align_binned.R \
+            --input_rds  {input.rds} \
+            --platform   merscope \
+            --sample     {params.animal_id} \
+            --resolution {wildcards.resolution} \
+            --config     config/config.yaml \
+            --out_rds    {output.rds} \
             > {log} 2>&1
         """
 
@@ -300,7 +386,7 @@ rule create_seurat_segmented_xenium:
         mem_mb        = 50000,
         cpus_per_task = 4,
         runtime       = 600,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_segmented_xenium.R \
@@ -356,7 +442,7 @@ rule create_seurat_segmented_merscope:
         mem_mb        = 50000,
         cpus_per_task = 4,
         runtime       = 600,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_segmented_merscope.R \
@@ -410,7 +496,7 @@ rule create_seurat_segmented_proseg:
         mem_mb        = 60000,
         cpus_per_task = 4,
         runtime       = 600,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_segmented_proseg.R \

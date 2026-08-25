@@ -29,4 +29,3 @@ default-resources:
   mem_mb: 8000
   cpus_per_task: 1
   runtime: 2880
-  partition: regular
