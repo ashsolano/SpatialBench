@@ -1,3 +1,6 @@
+import os
+
+
 # Rule:   create_seurat_binned_xenium
 # Purpose: Create a binned Seurat object for one Xenium sample at a given resolution.
 #
@@ -506,3 +509,200 @@ rule create_seurat_segmented_proseg:
             --out_dir     {params.out_dir} \
             > {log} 2>&1
         """
+
+
+# ---------------------------------------------------------------------------
+# ROI extraction (01_preprocessing/R/compute_roi_box.R, extract_roi.R)
+# ---------------------------------------------------------------------------
+# Extracts a fixed physical region of interest (config["roi"]["size_um"]),
+# centred on each animal's VisiumHD tissue extent, from VisiumHD and matched
+# aligned MERSCOPE/Xenium objects. Only runs for the 4 matched animals
+# (config["stalign"]["matched_samples"]).
+
+
+def _roi_size_label(size_um):
+    # e.g. 2000 -> "2mm"; 500 -> "500um" — keeps ROI size unambiguous from
+    # the filename alone without a distracting "2000um" for round mm sizes.
+    if size_um % 1000 == 0:
+        return f"{size_um // 1000}mm"
+    return f"{size_um}um"
+
+
+ROI_SIZE_LABEL = _roi_size_label(config["roi"]["size_um"])
+
+# VisiumHD sample ID (e.g. "batch33_709") -> animal ID (e.g. "wt709")
+_VISIUMHD_TO_ANIMAL = {v: k for k, v in config["stalign"]["visiumhd"].items()}
+
+
+# Rule:   compute_roi_box
+# Purpose: Compute one animal's ROI box definition (center + bounds, in
+#          microns) from its VisiumHD reference object. Run once per animal;
+#          reused by extract_roi_visium/merscope/xenium below.
+#
+# Config keys used:
+#   config["roi"]["size_um"]
+#   config["stalign"] — visiumhd, microns_per_pixel
+#   config["visiumhd"] — data_dir, samples
+
+rule compute_roi_box:
+    wildcard_constraints:
+        sample = "ko167|ko168|wt709|wt713"
+    input:
+        rds = lambda wc: os.path.join(
+            config["visiumhd"]["data_dir"],
+            config["visiumhd"]["samples"][config["stalign"]["visiumhd"][wc.sample]],
+        )
+    output:
+        rds = "results/01_preprocessing/roi_boxes/{sample}_roi_box_" + ROI_SIZE_LABEL + ".rds"
+    log:
+        "logs/01_preprocessing/roi_boxes/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/roi_boxes/{sample}.txt"
+    resources:
+        mem_mb  = 16000,
+        runtime = 15,
+        slurm_partition = "regular"
+    shell:
+        """
+        module load R/4.4.1 && Rscript --vanilla 01_preprocessing/R/compute_roi_box.R \
+            --sample   {wildcards.sample} \
+            --config   config/config.yaml \
+            --out_rds  {output.rds} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   extract_roi_visium
+# Purpose: Subset a VisiumHD reference object to one animal's ROI box.
+#
+# Config keys used:
+#   config["visiumhd"] — data_dir, samples
+#   config["stalign"]["visiumhd"] — animal -> VisiumHD sample ID
+
+rule extract_roi_visium:
+    wildcard_constraints:
+        visium_sample = "batch33_167|batch33_168|batch33_709|batch33_713"
+    input:
+        rds         = lambda wc: os.path.join(
+            config["visiumhd"]["data_dir"],
+            config["visiumhd"]["samples"][wc.visium_sample],
+        ),
+        roi_box_rds = lambda wc: (
+            "results/01_preprocessing/roi_boxes/"
+            + _VISIUMHD_TO_ANIMAL[wc.visium_sample] + "_roi_box_" + ROI_SIZE_LABEL + ".rds"
+        )
+    output:
+        rds = "results/01_preprocessing/visium_8um_roi/{visium_sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds"
+    log:
+        "logs/01_preprocessing/visium_8um_roi/{visium_sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/visium_8um_roi/{visium_sample}.txt"
+    resources:
+        mem_mb  = 40000,
+        runtime = 30,
+        slurm_partition = "regular"
+    shell:
+        """
+        module load R/4.4.1 && Rscript --vanilla 01_preprocessing/R/extract_roi.R \
+            --input_rds   {input.rds} \
+            --platform    visium \
+            --roi_box_rds {input.roi_box_rds} \
+            --out_rds     {output.rds} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   extract_roi_merscope
+# Purpose: Subset an aligned MERSCOPE object to its matched animal's ROI box.
+#
+# Config keys used:
+#   config["stalign"]["matched_samples"]["merscope"]
+
+rule extract_roi_merscope:
+    wildcard_constraints:
+        sample = "ko167_batch10|ko168_batch9|wt709_batch13|wt713_batch13"
+    input:
+        rds         = "results/01_preprocessing/merscope_8um_aligned/{sample}_8um_aligned.rds",
+        roi_box_rds = lambda wc: (
+            "results/01_preprocessing/roi_boxes/"
+            + wc.sample.split("_batch")[0] + "_roi_box_" + ROI_SIZE_LABEL + ".rds"
+        )
+    output:
+        rds = "results/01_preprocessing/merscope_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds"
+    log:
+        "logs/01_preprocessing/merscope_8um_roi/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/merscope_8um_roi/{sample}.txt"
+    resources:
+        mem_mb  = 40000,
+        runtime = 30,
+        slurm_partition = "regular"
+    shell:
+        """
+        module load R/4.4.1 && Rscript --vanilla 01_preprocessing/R/extract_roi.R \
+            --input_rds   {input.rds} \
+            --platform    merscope \
+            --roi_box_rds {input.roi_box_rds} \
+            --out_rds     {output.rds} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   extract_roi_xenium
+# Purpose: Subset an aligned Xenium object to its matched animal's ROI box.
+#
+# Config keys used:
+#   config["stalign"]["matched_samples"]["xenium"]
+
+rule extract_roi_xenium:
+    wildcard_constraints:
+        sample = "ko167_batch24|ko168_batch27|wt709_batch27|wt713_batch24"
+    input:
+        rds         = "results/01_preprocessing/xenium_8um_aligned/{sample}_8um_aligned.rds",
+        roi_box_rds = lambda wc: (
+            "results/01_preprocessing/roi_boxes/"
+            + wc.sample.split("_batch")[0] + "_roi_box_" + ROI_SIZE_LABEL + ".rds"
+        )
+    output:
+        rds = "results/01_preprocessing/xenium_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds"
+    log:
+        "logs/01_preprocessing/xenium_8um_roi/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/xenium_8um_roi/{sample}.txt"
+    resources:
+        mem_mb  = 40000,
+        runtime = 30,
+        slurm_partition = "regular"
+    shell:
+        """
+        module load R/4.4.1 && Rscript --vanilla 01_preprocessing/R/extract_roi.R \
+            --input_rds   {input.rds} \
+            --platform    xenium \
+            --roi_box_rds {input.roi_box_rds} \
+            --out_rds     {output.rds} \
+            > {log} 2>&1
+        """
+
+
+rule visium_binning_roi:
+    input:
+        expand(
+            "results/01_preprocessing/visium_8um_roi/{visium_sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds",
+            visium_sample = config["stalign"]["visiumhd"].values(),
+        )
+
+
+rule merscope_binning_roi:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds",
+            sample = config["stalign"]["matched_samples"]["merscope"].values(),
+        )
+
+
+rule xenium_binning_roi:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds",
+            sample = config["stalign"]["matched_samples"]["xenium"].values(),
+        )

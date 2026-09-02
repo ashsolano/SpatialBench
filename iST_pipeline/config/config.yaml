@@ -119,12 +119,19 @@ stalign:
     wt709: batch33_709
     wt713: batch33_713
   visiumhd_scalefactors: #(Space Ranger scalefactors_json.json -> tissue_lowres_scalef)
-    batch33_167: 0.027210884 
+    batch33_167: 0.027210884
     batch33_168: 0.024467824
     batch33_709: 0.027233116
     batch33_713: 0.027233116
-  # Landmark points picked during interactive STalign registration (see
-  # STalign_reticulate.Rmd), in (y, x) order — one [y, x] pair per row, same
+  # Physical size of one pixel in the full-resolution image
+  # Space Ranger scalefactors_json.json -> microns_per_pixel
+  # Units: µm / pixel
+  microns_per_pixel:
+    batch33_167: 0.27392760218385975
+    batch33_168: 0.2737168872976854
+    batch33_709: 0.2738123160400097
+    batch33_713: 0.2738726
+  # Landmark points picked during interactive STalign registration in (y, x) order — one [y, x] pair per row, same
   # order as source/target. 
   landmarks:
     ko167:
@@ -157,10 +164,20 @@ stalign:
         target: [[343, 569], [171, 537], [51, 523], [26, 332], [121, 32], [315, 67], [535, 158]]
 
 
+
 # Bin sizes in microns — one RDS is produced per sample per resolution
 bin_resolutions:
   - 8
   - 16
+
+# ---------------------------------------------------------------------------
+# ROI extraction (01_preprocessing/R/compute_roi_box.R, extract_roi.R)
+# ---------------------------------------------------------------------------
+# Fixed physical region-of-interest size, centred on each animal's VisiumHD
+# tissue extent, extracted from VisiumHD and matched aligned MERSCOPE/Xenium
+# objects.
+roi:
+  size_um: 2000  # 2mm x 2mm
 
 # Minimum transcript quality value for inclusion (Xenium only)
 mols_qv_threshold: 20
