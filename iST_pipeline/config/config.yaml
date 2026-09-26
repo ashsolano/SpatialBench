@@ -4,11 +4,10 @@
 
 scrna:
   path:       "/vast/projects/SpatialBench/scGEM_subcluster/scFlex_seu.rds"
-  assay:      "logcounts"
+  assay:      "RNA"
   sample_col: "SampleID"
   wt_ids:
     - "709"
-    - "710"
     - "713"
 
 visiumhd:
@@ -57,6 +56,23 @@ xenium_proseg:
     ctrl174__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg_xenium__Batch34__0032118__Region_4/output
 
 
+xenium_prosegv3_default:
+  samples:
+    wt709__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/xenium_wt709_batch34_default2proseg
+    wt710__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/xenium_wt710_batch34_default2proseg
+    ctrl172_batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/xenium_ctrl172_batch34_default2proseg
+    ctrl173_batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/xenium_ctrl173_batch34_default2proseg
+    ctrl174__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/xenium_ctrl174_batch34_default2proseg
+
+xenium_prosegv3_cellpose:
+  samples:
+    wt709__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/xenium_wt709_batch34_cellpose2proseg
+    wt710__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/xenium_wt710_batch34_cellpose2proseg
+    ctrl172_batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/xenium_ctrl172_batch34_cellpose2proseg
+    ctrl173_batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/xenium_ctrl173_batch34_cellpose2proseg
+    ctrl174__batch34__0032118: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/xenium_ctrl174_batch34_cellpose2proseg
+
+
 merscope:
   samples:
     wt709_batch13: /vast/projects/SpatialBench/segmentation/Cellpose/resegmentation_cellpose_merscope/MERSCOPE_cellpose_reseg/Sample-709/Vizgen
@@ -92,6 +108,31 @@ merscope_proseg:
     ko166_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218Batch22FFMuSpleen_VMSC04501_region_2/output
     ko167_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218Batch22FFMuSpleen_VMSC04501_region_2/output
     ko168_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg_merscope_G000218BenchmarkingBatch26_VMSC04501_region_2/output
+
+
+merscope_prosegv3_default:
+  samples:
+    ctrl172_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_ctrl172_batch10_default2proseg
+    ctrl173_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_ctrl173_batch9_default2proseg
+    ctrl174_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_ctrl174_batch6_default2proseg
+    ko166_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_ko166_batch6_default2proseg
+    ko167_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_ko167_batch10_default2proseg
+    ko168_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_ko168_batch9_default2proseg
+    wt709_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_wt709_batch13_default2proseg
+    wt710_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_wt710_batch13_default2proseg
+    wt713_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/default/merscope_wt713_batch13_default2proseg
+
+merscope_prosegv3_cellpose:
+  samples:
+    ctrl172_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_ctrl172_batch10_cellpose2proseg
+    ctrl173_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_ctrl173_batch9_cellpose2proseg
+    ctrl174_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_ctrl174_batch6_cellpose2proseg
+    ko166_batch6: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_ko166_batch6_cellpose2proseg
+    ko167_batch10: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_ko167_batch10_cellpose2proseg
+    ko168_batch9: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_ko168_batch9_cellpose2proseg
+    wt709_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_wt709_batch13_cellpose2proseg
+    wt710_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_wt710_batch13_cellpose2proseg
+    wt713_batch13: /vast/projects/SpatialBench/segmentation/Proseg/proseg3.1.1/cellpose_custom/merscope_wt713_batch13_cellpose2proseg
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +290,7 @@ spatial_analysis:
     - merscope_proseg
 
   # --- Shared analysis parameters ---
-  qc_min_counts: 6      # minimum transcripts per cell (strict greater-than)
+  qc_min_counts: 3      # minimum transcripts per cell (strict greater-than)
   scale_factor: 10000   # LogNormalize scale factor
   banksy_k_geom: 12     # BANKSY geometric neighbourhood size
   npcs: 30              # PCA components computed on BANKSY features
@@ -403,6 +444,10 @@ annotations:
     "7": "GC B cells"
     "8": "Plasma B cells"
     "9": "Granulocytes"
+  merscope_prosegv3_default:        {}
+  merscope_prosegv3_cellpose:       {}
+  xenium_batch34_prosegv3_default:  {}
+  xenium_batch34_prosegv3_cellpose: {}
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +472,10 @@ gc_zones:
   merscope_default:         {}
   merscope_cellpose:        {}
   merscope_proseg:          {}
+  merscope_prosegv3_default:        {}
+  merscope_prosegv3_cellpose:       {}
+  xenium_batch34_prosegv3_default:  {}
+  xenium_batch34_prosegv3_cellpose: {}
 
 
 # ---------------------------------------------------------------------------

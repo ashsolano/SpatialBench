@@ -173,7 +173,9 @@ rule merscope_proseg:
 #   snakemake spatial_merscope_default
 #   snakemake spatial_merscope_cellpose
 #   snakemake spatial_merscope_proseg
-# Run all seven methods:
+#   snakemake spatial_xenium_binned            # 9 non-batch34 samples, 8um binned+filtered
+#   snakemake spatial_merscope_binned          # 9 samples, 8um binned+filtered
+# Run all seven segmented methods:
 #   snakemake spatial_analysis
 
 rule spatial_xenium_default:
@@ -209,6 +211,16 @@ rule spatial_merscope_cellpose:
 rule spatial_merscope_proseg:
     input:
         "results/02_spatial_analysis/merscope_proseg/embedded.rds"
+
+
+rule spatial_xenium_binned:
+    input:
+        "results/02_spatial_analysis/xenium_binned/embedded.rds"
+
+
+rule spatial_merscope_binned:
+    input:
+        "results/02_spatial_analysis/merscope_binned/embedded.rds"
 
 
 rule spatial_analysis:
@@ -480,7 +492,8 @@ rule benchmarking_scrna_correlation:
 
 rule benchmarking_qc_metrics:
     input:
-        "results/03_benchmarking/qc_metrics/metadata_combined.rds"
+        "results/03_benchmarking/qc_metrics/metadata_combined.rds",
+        "results/03_benchmarking/qc_metrics/metadata_roi" + ROI_SIZE_LABEL + ".rds"
 
 
 rule benchmarking_qc_backgrounds:
@@ -517,6 +530,7 @@ rule benchmarking_all:
         "results/03_benchmarking/dataset_summary/gene_lists.rds",
         "results/03_benchmarking/scrna_correlation/avg_expr.rds",
         "results/03_benchmarking/qc_metrics/metadata_combined.rds",
+        "results/03_benchmarking/qc_metrics/metadata_roi" + ROI_SIZE_LABEL + ".rds",
         "results/03_benchmarking/qc_backgrounds/background_per_sample.rds",
         "results/03_benchmarking/qc_backgrounds/fdr_results.rds",
         "results/03_benchmarking/probe_rank/ranked_plat.rds",
@@ -555,7 +569,9 @@ rule manuscript_fig2_qc:
         "figures/fig2/spatial_ncount.pdf",
         "figures/fig2/spatial_nfeature.pdf",
         "figures/fig2/qc_counts_spatial.pdf",
-        "figures/fig2/qc_genes_spatial.pdf"
+        "figures/fig2/qc_genes_spatial.pdf",
+        "figures/fig2/qc_counts_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
+        "figures/fig2/qc_genes_spatial_roi" + ROI_SIZE_LABEL + ".pdf"
 
 
 rule manuscript_fig2_background:
@@ -594,6 +610,8 @@ rule manuscript_all:
         "figures/fig2/spatial_nfeature.pdf",
         "figures/fig2/qc_counts_spatial.pdf",
         "figures/fig2/qc_genes_spatial.pdf",
+        "figures/fig2/qc_counts_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
+        "figures/fig2/qc_genes_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
         "figures/fig2/background_vs_target.pdf",
         "figures/fig2/fdr.pdf",
         "figures/fig2/probe_scurves.pdf",

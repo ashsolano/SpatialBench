@@ -511,6 +511,149 @@ rule create_seurat_segmented_proseg:
         """
 
 
+# Rule:   create_seurat_segmented_prosegv3_default
+# Purpose: Create a Proseg 3.1.1 (default segmentation)-segmented Seurat object
+#          for one sample on either platform. Mirrors create_seurat_segmented_proseg;
+#          relies on the fixed myLoadProseg() (utils/segmentation_utils.R) that
+#          reads Proseg 3.1.1's MatrixMarket-format counts.csv.gz output.
+#
+# Config keys used:
+#   config["xenium_prosegv3_default"]["samples"]   — dict of sample name -> Proseg output directory
+#   config["merscope_prosegv3_default"]["samples"] — dict of sample name -> Proseg output directory
+
+def _prosegv3_default_path(wc):
+    section = f"{wc.platform}_prosegv3_default"
+    path = config[section]["samples"][wc.sample]
+    if path is None:
+        raise ValueError(
+            f"Path not set for {section} sample '{wc.sample}'. "
+            f"Please fill in the path in config/config.yaml."
+        )
+    return path
+
+
+rule create_seurat_segmented_prosegv3_default:
+    input:
+        data_dir = _prosegv3_default_path
+    output:
+        rds = "results/01_preprocessing/{platform}_prosegv3_default/{sample}_proseg.rds"
+    log:
+        "logs/01_preprocessing/{platform}_prosegv3_default/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/{platform}_prosegv3_default/{sample}.txt"
+    params:
+        out_dir = "results/01_preprocessing/{platform}_prosegv3_default",
+        assay   = lambda wc: "Xenium" if wc.platform == "xenium" else "Vizgen"
+    envmodules:
+        "R/4.4.1",
+        "geos/3.12.1",
+        "hdf5/1.12.3",
+        "proj/9.4.0",
+        "gdal/3.9.0"
+    resources:
+        mem_mb        = 60000,
+        cpus_per_task = 4,
+        runtime       = 600,
+        slurm_partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_segmented_proseg.R \
+            --data_dir    {input.data_dir} \
+            --sample_name {wildcards.sample} \
+            --assay       {params.assay} \
+            --out_dir     {params.out_dir} \
+            > {log} 2>&1
+        """
+
+
+# Rule:   create_seurat_segmented_prosegv3_cellpose
+# Purpose: Create a Proseg 3.1.1 (Cellpose-prior segmentation)-segmented Seurat
+#          object for one sample on either platform. Mirrors
+#          create_seurat_segmented_proseg; relies on the fixed myLoadProseg()
+#          (utils/segmentation_utils.R) that reads Proseg 3.1.1's
+#          MatrixMarket-format counts.csv.gz output.
+#
+# Config keys used:
+#   config["xenium_prosegv3_cellpose"]["samples"]   — dict of sample name -> Proseg output directory
+#   config["merscope_prosegv3_cellpose"]["samples"] — dict of sample name -> Proseg output directory
+
+def _prosegv3_cellpose_path(wc):
+    section = f"{wc.platform}_prosegv3_cellpose"
+    path = config[section]["samples"][wc.sample]
+    if path is None:
+        raise ValueError(
+            f"Path not set for {section} sample '{wc.sample}'. "
+            f"Please fill in the path in config/config.yaml."
+        )
+    return path
+
+
+rule create_seurat_segmented_prosegv3_cellpose:
+    input:
+        data_dir = _prosegv3_cellpose_path
+    output:
+        rds = "results/01_preprocessing/{platform}_prosegv3_cellpose/{sample}_proseg.rds"
+    log:
+        "logs/01_preprocessing/{platform}_prosegv3_cellpose/{sample}.log"
+    benchmark:
+        "benchmarks/01_preprocessing/{platform}_prosegv3_cellpose/{sample}.txt"
+    params:
+        out_dir = "results/01_preprocessing/{platform}_prosegv3_cellpose",
+        assay   = lambda wc: "Xenium" if wc.platform == "xenium" else "Vizgen"
+    envmodules:
+        "R/4.4.1",
+        "geos/3.12.1",
+        "hdf5/1.12.3",
+        "proj/9.4.0",
+        "gdal/3.9.0"
+    resources:
+        mem_mb        = 60000,
+        cpus_per_task = 4,
+        runtime       = 600,
+        slurm_partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 01_preprocessing/R/create_seurat_segmented_proseg.R \
+            --data_dir    {input.data_dir} \
+            --sample_name {wildcards.sample} \
+            --assay       {params.assay} \
+            --out_dir     {params.out_dir} \
+            > {log} 2>&1
+        """
+
+
+rule merscope_segmented_prosegv3_default:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_prosegv3_default/{sample}_proseg.rds",
+            sample = config["merscope_prosegv3_default"]["samples"].keys(),
+        )
+
+
+rule merscope_segmented_prosegv3_cellpose:
+    input:
+        expand(
+            "results/01_preprocessing/merscope_prosegv3_cellpose/{sample}_proseg.rds",
+            sample = config["merscope_prosegv3_cellpose"]["samples"].keys(),
+        )
+
+
+rule xenium_segmented_prosegv3_default:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_prosegv3_default/{sample}_proseg.rds",
+            sample = config["xenium_prosegv3_default"]["samples"].keys(),
+        )
+
+
+rule xenium_segmented_prosegv3_cellpose:
+    input:
+        expand(
+            "results/01_preprocessing/xenium_prosegv3_cellpose/{sample}_proseg.rds",
+            sample = config["xenium_prosegv3_cellpose"]["samples"].keys(),
+        )
+
+
 # ---------------------------------------------------------------------------
 # ROI extraction (01_preprocessing/R/compute_roi_box.R, extract_roi.R)
 # ---------------------------------------------------------------------------

@@ -59,19 +59,37 @@ import json
 
 
 # ---------------------------------------------------------------------------
-# Lookup: method -> (preprocessing_dir, seg_suffix)
+# Lookup: method -> (preprocessing_dir, file_suffix, seg_label)
 # ---------------------------------------------------------------------------
 # xenium_batch34_default reads from the xenium_default preprocessing outputs;
 # there is no xenium_batch34_default directory under 01_preprocessing.
+#
+# file_suffix is the "_{suffix}.rds" tail on the 01_preprocessing output
+# filename; seg_label is the --seg value passed to preprocess_sample.R and
+# stored as metadata. These differ for the prosegv3 methods: both
+# create_seurat_segmented_prosegv3_default and _cellpose still write
+# "{sample}_proseg.rds" (file_suffix stays "proseg"), but seg_label is kept
+# distinct ("prosegv3_default" / "prosegv3_cellpose") so obj$seg can
+# distinguish proseg versions/variants downstream.
 
 _METHOD_PREPROCESS = {
-    "xenium_default":          ("xenium_default",    "default"),
-    "xenium_batch34_default":  ("xenium_default",    "default"),
-    "xenium_batch34_cellpose": ("xenium_cellpose",   "cellpose"),
-    "xenium_batch34_proseg":   ("xenium_proseg",     "proseg"),
-    "merscope_default":        ("merscope_default",  "default"),
-    "merscope_cellpose":       ("merscope_cellpose", "cellpose"),
-    "merscope_proseg":         ("merscope_proseg",   "proseg"),
+    "xenium_default":          ("xenium_default",    "default",  "default"),
+    "xenium_batch34_default":  ("xenium_default",    "default",  "default"),
+    "xenium_batch34_cellpose": ("xenium_cellpose",   "cellpose", "cellpose"),
+    "xenium_batch34_proseg":   ("xenium_proseg",     "proseg",   "proseg"),
+    "xenium_batch34_prosegv3_default":  ("xenium_prosegv3_default",  "proseg", "prosegv3_default"),
+    "xenium_batch34_prosegv3_cellpose": ("xenium_prosegv3_cellpose", "proseg", "prosegv3_cellpose"),
+    "merscope_default":        ("merscope_default",  "default",  "default"),
+    "merscope_cellpose":       ("merscope_cellpose", "cellpose", "cellpose"),
+    "merscope_proseg":         ("merscope_proseg",   "proseg",   "proseg"),
+    "merscope_prosegv3_default":  ("merscope_prosegv3_default",  "proseg", "prosegv3_default"),
+    "merscope_prosegv3_cellpose": ("merscope_prosegv3_cellpose", "proseg", "prosegv3_cellpose"),
+    # Binned (not cell-segmented) data, already filtered by filter_binned_xenium /
+    # filter_binned_merscope (01_preprocessing). Kept distinct from xenium_default /
+    # merscope_default, which mean vendor-default cell-segmented data everywhere
+    # else in the pipeline (annotations, gc_zones, de_methods).
+    "xenium_binned":           ("xenium_8um_filtered",   "8um_filtered", "binned"),
+    "merscope_binned":         ("merscope_8um_filtered", "8um_filtered", "binned"),
 }
 
 # Constraint string shared across all three rules
@@ -80,9 +98,15 @@ _METHODS = (
     "|xenium_batch34_default"
     "|xenium_batch34_cellpose"
     "|xenium_batch34_proseg"
+    "|xenium_batch34_prosegv3_default"
+    "|xenium_batch34_prosegv3_cellpose"
     "|merscope_default"
     "|merscope_cellpose"
     "|merscope_proseg"
+    "|merscope_prosegv3_default"
+    "|merscope_prosegv3_cellpose"
+    "|xenium_binned"
+    "|merscope_binned"
 )
 
 
@@ -100,19 +124,24 @@ def _preprocess_dir(method):
     return _METHOD_PREPROCESS[method][0]
 
 
-def _seg_from_method(method):
-    """Return the seg suffix used in 01_preprocessing output filenames."""
+def _file_suffix_from_method(method):
+    """Return the "_{suffix}.rds" filename suffix used by 01_preprocessing outputs."""
     return _METHOD_PREPROCESS[method][1]
+
+
+def _seg_from_method(method):
+    """Return the --seg label passed to preprocess_sample.R (stored as obj$seg)."""
+    return _METHOD_PREPROCESS[method][2]
 
 
 def _spatial_samples(method):
     """Return the configured sample list for a given method.
 
-    xenium_default        -> xenium_default_samples (9 non-batch34 samples)
-    xenium_batch34_*      -> xenium_batch34_samples (5 batch34 samples)
-    merscope_*            -> merscope_samples (9 samples)
+    xenium_default, xenium_binned -> xenium_default_samples (9 non-batch34 samples)
+    xenium_batch34_*              -> xenium_batch34_samples (5 batch34 samples)
+    merscope_*                    -> merscope_samples (9 samples)
     """
-    if method == "xenium_default":
+    if method in ("xenium_default", "xenium_binned"):
         return config["spatial_analysis"]["xenium_default_samples"]
     elif method.startswith("xenium_batch34"):
         return config["spatial_analysis"]["xenium_batch34_samples"]
@@ -152,10 +181,10 @@ rule spatial_preprocess_sample:
     wildcard_constraints:
         method = _METHODS
     input:
-        rds = lambda wc: "results/01_preprocessing/{preprocess_dir}/{sample}_{seg}.rds".format(
+        rds = lambda wc: "results/01_preprocessing/{preprocess_dir}/{sample}_{suffix}.rds".format(
             preprocess_dir = _preprocess_dir(wc.method),
             sample         = wc.sample,
-            seg            = _seg_from_method(wc.method),
+            suffix         = _file_suffix_from_method(wc.method),
         )
     output:
         rds = "results/02_spatial_analysis/{method}/preprocessed/{sample}.rds"
@@ -200,6 +229,49 @@ rule spatial_preprocess_sample:
             --out_dir        {params.out_dir}       \
             > {log} 2>&1
         """
+
+
+# ---------------------------------------------------------------------------
+# Aggregation rules: spatial_preprocess_{method} (proseg v3 methods)
+# ---------------------------------------------------------------------------
+# No-output, input-only targets that build all per-sample preprocessed RDS
+# files for one proseg v3 method. Sample keys are drawn directly from the
+# corresponding 01_preprocessing config section (the source of truth for
+# which raw proseg v3 outputs exist), following the same convention as
+# xenium_binning_aligned / merscope_binning_aligned in the Snakefile — not
+# from config["spatial_analysis"][...] via _spatial_samples(), which is a
+# separately maintained list that could in principle drift out of sync.
+
+rule spatial_preprocess_merscope_prosegv3_default:
+    input:
+        expand(
+            "results/02_spatial_analysis/merscope_prosegv3_default/preprocessed/{sample}.rds",
+            sample = config["merscope_prosegv3_default"]["samples"].keys(),
+        )
+
+
+rule spatial_preprocess_merscope_prosegv3_cellpose:
+    input:
+        expand(
+            "results/02_spatial_analysis/merscope_prosegv3_cellpose/preprocessed/{sample}.rds",
+            sample = config["merscope_prosegv3_cellpose"]["samples"].keys(),
+        )
+
+
+rule spatial_preprocess_xenium_batch34_prosegv3_default:
+    input:
+        expand(
+            "results/02_spatial_analysis/xenium_batch34_prosegv3_default/preprocessed/{sample}.rds",
+            sample = config["xenium_prosegv3_default"]["samples"].keys(),
+        )
+
+
+rule spatial_preprocess_xenium_batch34_prosegv3_cellpose:
+    input:
+        expand(
+            "results/02_spatial_analysis/xenium_batch34_prosegv3_cellpose/preprocessed/{sample}.rds",
+            sample = config["xenium_prosegv3_cellpose"]["samples"].keys(),
+        )
 
 
 # ---------------------------------------------------------------------------

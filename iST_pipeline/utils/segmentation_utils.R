@@ -370,9 +370,43 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
     as.data.frame(arrow::read_parquet(f$path))
   }
 
-  # 1. Expected counts: rows = cells, columns = genes (no explicit cell-ID column)
+  # 1. Expected/raw counts: rows = cells, columns = genes.
+  # Proseg 3.1.1 renamed this output to counts.csv.gz and switched its content to
+  # gzipped MatrixMarket format (proseg --output-counts docs: "cell-by-gene count
+  # matrix in gzipped matrix market format"), despite the .csv.gz extension. Detect
+  # the actual format by content, not filename/extension, and fall back to the
+  # original CSV/parquet parsing for older Proseg outputs.
   message("Loading expected counts")
-  counts_df <- read_proseg_file("expected-counts")
+  counts_file <- find_proseg_file("expected-counts")
+  if (is.null(counts_file)) counts_file <- find_proseg_file("counts")
+  if (is.null(counts_file)) {
+    stop("Cannot find expected-counts or counts (.csv.gz or .parquet) in ", data.dir)
+  }
+
+  is_mtx <- FALSE
+  if (counts_file$fmt == "csv") {
+    con        <- gzfile(counts_file$path)
+    first_line <- readLines(con, n = 1)
+    close(con)
+    is_mtx <- grepl("^%%MatrixMarket", first_line)
+  }
+
+  if (is_mtx) {
+    counts_df <- Matrix::readMM(gzfile(counts_file$path))
+    mtx_cell_metadata <- read_proseg_file("cell-metadata")
+    mtx_gene_metadata <- read_proseg_file("gene-metadata")
+    # Cell IDs are prefixed with a non-numeric string ("cell_") before use as
+    # row/col names. Proseg's cell IDs are a plain 0-indexed integer sequence,
+    # which was found to trigger data.frame row-name corruption (an NA row
+    # name silently introduced) somewhere in CreateSeuratObject's meta.data
+    # merge; prefixing sidesteps it regardless of the exact internal cause.
+    rownames(counts_df) <- paste0("cell_", mtx_cell_metadata$cell)
+    colnames(counts_df) <- as.character(mtx_gene_metadata$gene)
+  } else if (counts_file$fmt == "csv") {
+    counts_df <- as.data.frame(data.table::fread(counts_file$path, data.table = FALSE))
+  } else {
+    counts_df <- as.data.frame(arrow::read_parquet(counts_file$path))
+  }
 
   # 2. Cell metadata: includes cell, centroid_x, centroid_y
   message("Loading cell metadata")
@@ -393,10 +427,18 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
   # 4. Build counts matrix (genes x cells) and create Seurat object
   message("Creating Seurat object")
   counts_matrix <- Matrix::Matrix(t(as.matrix(counts_df)), sparse = TRUE)
+  # See note above: prefix cell IDs so meta.data's row names are never a plain
+  # 0-indexed integer sequence, which was found to trigger row-name corruption.
+  rownames(cell_metadata) <- paste0("cell_", cell_metadata$cell)
+
   obj           <- CreateSeuratObject(counts = counts_matrix, meta.data = cell_metadata,
                                       assay = assay)
   # Rename cells from integer row indices to actual cell IDs from metadata
   colnames(obj) <- obj$cell
+  # orig.ident otherwise ends up as "cell" for every cell: CreateSeuratObject()
+  # derives idents by splitting colnames on "_", and colnames were "cell_<id>"
+  # at that point (see "cell_" prefix note above).
+  obj$orig.ident <- fov
 
   # 5. Load cell polygon boundaries from compressed GeoJSON
   message("Loading cell polygons")

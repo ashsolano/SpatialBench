@@ -60,7 +60,7 @@ rule fig1:
         mem_mb        = 32000,
         cpus_per_task = 4,
         runtime       = 60,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 04_manuscript/R/fig1.R \
@@ -77,34 +77,42 @@ rule fig1:
 # ---------------------------------------------------------------------------
 # Generates platform QC panels for Figure 2:
 #   - Spatial scatter montages of nCount and nFeature across 4 representative
-#     samples per platform (loads 8µm Seurat objects for MERSCOPE and Xenium;
+#     samples per platform (loads STalign-aligned 8µm objects for MERSCOPE and Xenium;
 #     VisiumHD loaded from config["visiumhd"]["data_dir"], not listed in input)
 #   - Per-platform boxplots of median counts/bin and genes/bin (90 common genes)
+#     for the matched animals: full tissue and ROI (metadata_roi*.rds), shared y-axis
 # Optional FLEX/scRNA comparison panels are skipped if metadata_flex_scrna.rds
 # is absent; re-run qc_metrics.R with --sc_rds to enable them.
 
 rule fig2_qc:
     input:
         metadata = "results/03_benchmarking/qc_metrics/metadata_combined.rds",
-        binning  = _binning_inputs(
-            platforms = {
-                "merscope": config["spatial_analysis"]["merscope_samples"],
-                "xenium":   config["spatial_analysis"]["xenium_default_samples"],
-            },
-            resolutions = [config["bin_resolutions"][0]],
+        meta_roi = "results/03_benchmarking/qc_metrics/metadata_roi" + ROI_SIZE_LABEL + ".rds",
+        # STalign-aligned 8µm objects for the montage samples
+        # (config["stalign"]["matched_samples"])
+        aligned  = expand(
+            "results/01_preprocessing/{platform}_8um_aligned/{sample}_8um_aligned.rds",
+            zip,
+            platform = ["merscope"] * len(config["stalign"]["matched_samples"]["merscope"])
+                     + ["xenium"]   * len(config["stalign"]["matched_samples"]["xenium"]),
+            sample   = list(config["stalign"]["matched_samples"]["merscope"].values())
+                     + list(config["stalign"]["matched_samples"]["xenium"].values()),
         )
     output:
         spatial_ncount   = "figures/fig2/spatial_ncount.pdf",
         spatial_nfeature = "figures/fig2/spatial_nfeature.pdf",
         qc_counts        = "figures/fig2/qc_counts_spatial.pdf",
-        qc_genes         = "figures/fig2/qc_genes_spatial.pdf"
+        qc_genes         = "figures/fig2/qc_genes_spatial.pdf",
+        qc_counts_roi    = "figures/fig2/qc_counts_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
+        qc_genes_roi     = "figures/fig2/qc_genes_spatial_roi" + ROI_SIZE_LABEL + ".pdf"
     log:
         "logs/04_manuscript/fig2_qc.log"
     benchmark:
         "benchmarks/04_manuscript/fig2_qc.txt"
     params:
         input_dir = "results/03_benchmarking/qc_metrics",
-        out_dir   = "figures/fig2"
+        out_dir   = "figures/fig2",
+        roi_label = ROI_SIZE_LABEL
     envmodules:
         "R/4.4.1",
         "geos/3.12.1",
@@ -115,13 +123,14 @@ rule fig2_qc:
         mem_mb        = 100000,
         cpus_per_task = 8,
         runtime       = 60,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 04_manuscript/R/fig2_qc.R \
             --config    config/config.yaml \
             --input_dir {params.input_dir} \
             --out_dir   {params.out_dir}   \
+            --roi_label {params.roi_label} \
             > {log} 2>&1
         """
 
@@ -160,7 +169,7 @@ rule fig2_background:
         mem_mb        = 32000,
         cpus_per_task = 4,
         runtime       = 30,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 04_manuscript/R/fig2_background.R \
@@ -200,7 +209,7 @@ rule fig2_gene_comparison:
         mem_mb        = 32000,
         cpus_per_task = 4,
         runtime       = 30,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 04_manuscript/R/fig2_gene_comparison.R \
@@ -254,7 +263,7 @@ rule fig3:
         mem_mb        = 32000,
         cpus_per_task = 4,
         runtime       = 30,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 04_manuscript/R/fig3.R \

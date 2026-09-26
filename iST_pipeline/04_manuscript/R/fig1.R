@@ -58,14 +58,20 @@ gene_lists    <- readRDS(opt$gene_lists)
 metric_levels  <- c("Bins", "Transcripts", "Transcripts (Common)",
                     "Sparsity", "Sparsity (Common)")
 binning_levels <- c("8µm", "16µm")
+# Platform order as read top-to-bottom on the bar plot (y axis reversed in plot_fun)
+technology_levels <- c("MERSCOPE", "Xenium", "VisiumHD")
 
 # Drop the Genes metric and any rows with NA binning
 combined_data <- combined_data |>
   dplyr::filter(Metric != "Genes", !is.na(Binning)) |>
   dplyr::mutate(
-    Metric  = factor(Metric,  levels = metric_levels),
-    Binning = factor(Binning, levels = binning_levels)
+    Technology = factor(Technology, levels = technology_levels),
+    Metric     = factor(Metric,     levels = metric_levels),
+    Binning    = factor(Binning,    levels = binning_levels)
   )
+
+# Fail loudly if a platform name doesn't match technology_levels (would become NA)
+stopifnot(!anyNA(combined_data$Technology))
 
 # ---------------------------------------------------------------------------
 # Summary statistics — mean ± SEM per Technology × Metric × Binning
@@ -79,8 +85,9 @@ summary_data <- combined_data |>
     .groups   = "drop"
   ) |>
   dplyr::mutate(
-    Metric  = factor(Metric,  levels = metric_levels),
-    Binning = factor(Binning, levels = binning_levels)
+    Technology = factor(Technology, levels = technology_levels),
+    Metric     = factor(Metric,     levels = metric_levels),
+    Binning    = factor(Binning,    levels = binning_levels)
   )
 
 # ---------------------------------------------------------------------------
@@ -89,9 +96,13 @@ summary_data <- combined_data |>
 
 # Density scatter plot of pseudobulk log10(CPM+1) for one platform vs scRNA-seq.
 # color_low/color_high are the gradient endpoints for the 2D density contours.
+# adjust scales the KDE bandwidth and bins sets the number of filled contour
+# levels (both platform-specific; display only). All genes are used.
+# Axis limits are applied via coord_fixed() so no points are dropped before
+# density estimation (scale limits would convert out-of-range values to NA).
 generate_density_plot <- function(expr_data, cor_value, n_genes,
                                   platform_name, color_low, color_high,
-                                  axis_limits) {
+                                  axis_limits, adjust = 1.5, bins = 8) {
   x_pos <- axis_limits[2] - 0.05 * diff(axis_limits)
   y_pos <- axis_limits[1] + 0.05 * diff(axis_limits)
 
@@ -100,15 +111,17 @@ generate_density_plot <- function(expr_data, cor_value, n_genes,
     stat_density_2d(
       aes(fill = after_stat(level), alpha = after_stat(level)),
       geom = "polygon", color = "black", linewidth = 0.3,
-      contour = TRUE, bins = 8, adjust = 1.5, na.rm = TRUE
+      contour = TRUE, bins = bins, adjust = adjust, na.rm = TRUE
     ) +
     scale_fill_gradient(low = color_low, high = color_high) +
     scale_alpha(range = c(0.2, 0.75), guide = "none") +
     geom_abline(slope = 1, intercept = 0,
                 color = "black", linewidth = 0.4, linetype = "dashed") +
-    scale_x_continuous(limits = axis_limits, expand = expansion(0)) +
-    scale_y_continuous(limits = axis_limits, expand = expansion(0)) +
-    coord_fixed() +
+    # expand_limits() widens the scale range (and hence the KDE evaluation grid)
+    # to the full axis range without dropping data, so contours are not cut flat
+    # at the data extremes; coord_fixed() then crops the display to axis_limits.
+    expand_limits(x = axis_limits, y = axis_limits) +
+    coord_fixed(xlim = axis_limits, ylim = axis_limits, expand = FALSE) +
     annotate("text", x = x_pos, y = y_pos,
              label = paste0("R = ", round(cor_value, 2), "\nn = ", n_genes),
              size = 3, hjust = 1, vjust = 0, color = "black") +
@@ -176,8 +189,11 @@ plot_fun <- function(df, summary_df, title) {
     scale_fill_platform() +
     facet_grid(Binning ~ Metric, scales = "free_x", space = "fixed") +
     scale_x_continuous(expand = expansion(mult = c(0, 0.50))) +
+    # Discrete y draws the first level at the bottom; reverse so level order reads top-to-bottom
+    scale_y_discrete(limits = rev) +
     theme_sb() +
     theme(
+      strip.background = element_blank(),   # drop theme_bw grey strip box (matches fig3)
       axis.text.x     = element_blank(),
       axis.ticks.x    = element_blank(),
       axis.title.x    = element_blank(),
@@ -274,15 +290,25 @@ all_values <- c(
   avg_expr$MERSCOPE$data$scRNA, avg_expr$MERSCOPE$data$ST,
   avg_expr$Xenium$data$scRNA,   avg_expr$Xenium$data$ST
 )
-axis_limits <- c(floor(min(all_values, na.rm = TRUE)),
-                 ceiling(max(all_values, na.rm = TRUE)))
+# Fixed 0–6 display range; fail loudly rather than silently crop genes
+axis_limits <- c(0, 6)
+value_range <- range(all_values, na.rm = TRUE)
+message("Panel C expression range: ", paste(round(value_range, 3), collapse = " – "))
+if (value_range[1] < axis_limits[1] || value_range[2] > axis_limits[2]) {
+  stop("Expression values fall outside the 0–6 axis range: ",
+       paste(round(value_range, 3), collapse = " – "))
+}
 
 p_visiumhd_cor <- generate_density_plot(
   avg_expr$VisiumHD$data, avg_expr$VisiumHD$correlation, avg_expr$VisiumHD$n_genes,
   platform_name = "Visium HD",
   color_low  = pal_muted_light["VisiumHD"],
   color_high = pal_muted["VisiumHD"],
-  axis_limits = axis_limits
+  axis_limits = axis_limits,
+  # All genes, no expression threshold; fewer contour levels than the
+  # targeted panels because Visium HD has ~15k genes. Display only.
+  adjust      = 1.5,
+  bins        = 6
 )
 
 p_merscope_cor <- generate_density_plot(
@@ -290,7 +316,9 @@ p_merscope_cor <- generate_density_plot(
   platform_name = "MERSCOPE",
   color_low  = pal_muted_light["MERSCOPE"],
   color_high = pal_muted["MERSCOPE"],
-  axis_limits = axis_limits
+  axis_limits = axis_limits,
+  adjust      = 1.5,
+  bins        = 8
 )
 
 p_xenium_cor <- generate_density_plot(
@@ -298,7 +326,9 @@ p_xenium_cor <- generate_density_plot(
   platform_name = "Xenium",
   color_low  = pal_muted_light["Xenium"],
   color_high = pal_muted["Xenium"],
-  axis_limits = axis_limits
+  axis_limits = axis_limits,
+  adjust      = 1.5,
+  bins        = 8
 )
 
 p_fig1c <- p_visiumhd_cor + p_merscope_cor + p_xenium_cor +

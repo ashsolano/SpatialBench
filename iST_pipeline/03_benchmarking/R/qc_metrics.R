@@ -4,8 +4,10 @@
 #           Also computes per-cell intersect-gene metadata for VisiumHD, FLEX
 #           snRNA-seq, and scRNA-seq (scGEM), used for Figure 2 FLEX comparison.
 # Inputs:   config/config.yaml  (visiumhd, spatial_analysis, bin_resolutions)
-#           results/01_preprocessing/merscope_{res}um/{sample}_{res}um.rds
-#           results/01_preprocessing/xenium_{res}um/{sample}_{res}um.rds
+#           results/01_preprocessing/merscope_{res}um_filtered/{sample}_{res}um_filtered.rds
+#           results/01_preprocessing/xenium_{res}um_filtered/{sample}_{res}um_filtered.rds
+#               (post-QC bins from filter_binned.R; MERSCOPE binned over all
+#                z-planes)
 #           results/03_benchmarking/dataset_summary/gene_lists.rds  (common genes)
 #           cfg$scrna$path  (scFlex_seu.rds — FLEX snRNA-seq reference)
 #           --sc_rds        (scGEM_seu.rds  — scRNA-seq; suggest adding to config.yaml
@@ -54,37 +56,9 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
-
-# Seurat v4/v5 compatible raw counts extraction
-get_counts_mat <- function(so, assay) {
-  tryCatch(
-    GetAssayData(so, assay = assay, layer  = "counts"),
-    error = function(e) GetAssayData(so, assay = assay, slot = "counts")
-  )
-}
-
-# Build per-bin metadata for one platform / bin-size / gene-subset combination.
-# gene_subset = NULL uses all genes; otherwise restricts to the supplied vector.
-# Returns a data frame with one row per bin/cell.
-build_meta_platform <- function(obj_list, sample_names, assay_name,
-                                platform_tag, subset_tag, bin_size_label,
-                                gene_subset = NULL) {
-  do.call(rbind, lapply(sample_names, function(s) {
-    obj     <- obj_list[[s]]
-    mat     <- get_counts_mat(obj, assay_name)
-    keep_g  <- if (is.null(gene_subset)) rownames(mat) else intersect(gene_subset, rownames(mat))
-    sub_mat <- mat[keep_g, , drop = FALSE]
-    data.frame(
-      Sample   = s,
-      nCount   = Matrix::colSums(sub_mat),
-      nFeature = Matrix::colSums(sub_mat > 0),
-      platform = platform_tag,
-      Subset   = subset_tag,
-      bin_size = bin_size_label,
-      stringsAsFactors = FALSE
-    )
-  }))
-}
+# get_counts_mat(), build_meta_platform(), load_common_genes() and
+# order_qc_factors() are shared with qc_metrics_roi.R
+source("03_benchmarking/R/utils/qc_utils.R")  # must be run from the project root
 
 # Compute per-barcode nCount and nFeature restricted to the intersect gene set.
 # Returns a data frame with columns: barcode, nCount_intersect, nFeature_intersect.
@@ -117,17 +91,17 @@ names(visiumhd_objs) <- names(visiumhd_samples)
 # ---------------------------------------------------------------------------
 # Load MERSCOPE binning objects
 # ---------------------------------------------------------------------------
-message("Loading MERSCOPE binning objects...")
+message("Loading MERSCOPE filtered binning objects...")
 
 merscope_samples <- cfg$spatial_analysis$merscope_samples
 bin_resolutions  <- cfg$bin_resolutions
 
 merscope_objs <- setNames(
   lapply(bin_resolutions, function(res) {
-    bin_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0("merscope_", res, "um"))
+    bin_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0("merscope_", res, "um_filtered"))
     setNames(
       lapply(merscope_samples, function(samp) {
-        path <- file.path(bin_dir, paste0(samp, "_", res, "um.rds"))
+        path <- file.path(bin_dir, paste0(samp, "_", res, "um_filtered.rds"))
         message("  ", samp, " @ ", res, "um: ", path)
         readRDS(path)
       }),
@@ -140,16 +114,16 @@ merscope_objs <- setNames(
 # ---------------------------------------------------------------------------
 # Load Xenium binning objects
 # ---------------------------------------------------------------------------
-message("Loading Xenium binning objects...")
+message("Loading Xenium filtered binning objects...")
 
 xenium_samples <- cfg$spatial_analysis$xenium_default_samples
 
 xenium_objs <- setNames(
   lapply(bin_resolutions, function(res) {
-    bin_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0("xenium_", res, "um"))
+    bin_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0("xenium_", res, "um_filtered"))
     setNames(
       lapply(xenium_samples, function(samp) {
-        path <- file.path(bin_dir, paste0(samp, "_", res, "um.rds"))
+        path <- file.path(bin_dir, paste0(samp, "_", res, "um_filtered.rds"))
         message("  ", samp, " @ ", res, "um: ", path)
         readRDS(path)
       }),
@@ -162,10 +136,7 @@ xenium_objs <- setNames(
 # ---------------------------------------------------------------------------
 # Load common genes (pre-computed by dataset_summary.R)
 # ---------------------------------------------------------------------------
-gene_lists   <- readRDS(opt$gene_lists)
-common_genes <- Reduce(intersect, list(gene_lists$VisiumHD,
-                                       gene_lists$MERSCOPE,
-                                       gene_lists$Xenium))
+common_genes <- load_common_genes(opt$gene_lists)
 message("Three-platform common genes: ", length(common_genes))
 
 # ---------------------------------------------------------------------------
@@ -209,11 +180,7 @@ for (res in bin_resolutions) {
 }
 
 # Combine and apply ordered factor levels for consistent plotting
-metadata_combined <- dplyr::bind_rows(meta_list) %>%
-  dplyr::mutate(
-    platform = factor(platform, levels = c("VisiumHD", "MERSCOPE", "Xenium")),
-    Subset   = factor(Subset,   levels = c("All", "90"))
-  )
+metadata_combined <- order_qc_factors(dplyr::bind_rows(meta_list))
 
 message("Saving metadata_combined.rds (", nrow(metadata_combined), " rows)...")
 saveRDS(metadata_combined, file.path(opt$out_dir, "metadata_combined.rds"))

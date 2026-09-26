@@ -35,15 +35,21 @@
 # Helper: collect binning RDS inputs for a dict of {platform: [samples]}
 # ---------------------------------------------------------------------------
 
-def _binning_inputs(platforms, resolutions):
-    """Expand preprocessing binning paths for each platform/sample/resolution."""
+def _binning_inputs(platforms, resolutions, filtered = False):
+    """Expand preprocessing binning paths for each platform/sample/resolution.
+
+    filtered = True points at the post-QC (empty-bin + DBSCAN) objects written
+    by filter_binned_{xenium,merscope}; False points at the raw binned objects.
+    """
+    suffix = "_filtered" if filtered else ""
     inputs = []
     for platform, samples in platforms.items():
         inputs += expand(
-            "results/01_preprocessing/{platform}_{res}um/{sample}_{res}um.rds",
+            "results/01_preprocessing/{platform}_{res}um{suffix}/{sample}_{res}um{suffix}.rds",
             platform = platform,
             sample   = samples,
             res      = resolutions,
+            suffix   = suffix,
         )
     return inputs
 
@@ -51,7 +57,7 @@ def _binning_inputs(platforms, resolutions):
 # ---------------------------------------------------------------------------
 # Rule: dataset_summary
 # ---------------------------------------------------------------------------
-# Loads all MERSCOPE and Xenium binning objects (8µm and 16µm) plus the
+# Loads all filtered MERSCOPE and Xenium binning objects (8µm and 16µm) plus the
 # VisiumHD processed objects. Computes per-sample QC metrics (bins,
 # transcripts, sparsity, common-gene equivalents across the three platforms)
 # and saves a long-format metrics table and gene-panel lists for fig1.R.
@@ -67,6 +73,7 @@ rule dataset_summary:
                 "xenium":   config["spatial_analysis"]["xenium_default_samples"],
             },
             resolutions = config["bin_resolutions"],
+            filtered    = True,
         )
     output:
         metrics    = "results/03_benchmarking/dataset_summary/metrics.rds",
@@ -87,7 +94,7 @@ rule dataset_summary:
         mem_mb        = 300000,
         cpus_per_task = 16,
         runtime       = 360,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/dataset_summary.R \
@@ -100,7 +107,7 @@ rule dataset_summary:
 # ---------------------------------------------------------------------------
 # Rule: scrna_correlation
 # ---------------------------------------------------------------------------
-# Loads the 10X FLEX scRNA-seq reference and the 8µm binning objects for
+# Loads the 10X FLEX scRNA-seq reference and the filtered 8µm binning objects for
 # MERSCOPE and Xenium, plus VisiumHD processed objects. Pseudobulks WT
 # samples, computes sparse log10(CPM+1), and saves per-platform averaged
 # expression data frames with Pearson r values for fig1c.
@@ -116,6 +123,7 @@ rule scrna_correlation:
                 "xenium":   config["spatial_analysis"]["xenium_default_samples"],
             },
             resolutions = [config["bin_resolutions"][0]],
+            filtered    = True,
         )
     output:
         avg_expr = "results/03_benchmarking/scrna_correlation/avg_expr.rds"
@@ -135,7 +143,7 @@ rule scrna_correlation:
         mem_mb        = 400000,
         cpus_per_task = 16,
         runtime       = 480,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/scrna_correlation.R \
@@ -149,7 +157,8 @@ rule scrna_correlation:
 # Rule: qc_metrics
 # ---------------------------------------------------------------------------
 # Computes per-bin nCount / nFeature metadata across all platforms and bin
-# resolutions, for both full and common-gene subsets. Saves
+# resolutions, for both full and common-gene subsets, from the post-QC
+# (_filtered) binned objects. Saves
 # metadata_combined.rds for use by fig2_qc.R.
 #
 # VisiumHD objects are loaded from config["visiumhd"]["data_dir"] (external).
@@ -165,6 +174,7 @@ rule qc_metrics:
                 "xenium":   config["spatial_analysis"]["xenium_default_samples"],
             },
             resolutions = config["bin_resolutions"],
+            filtered    = True,
         )
     output:
         metadata = "results/03_benchmarking/qc_metrics/metadata_combined.rds"
@@ -184,13 +194,67 @@ rule qc_metrics:
         mem_mb        = 200000,
         cpus_per_task = 16,
         runtime       = 360,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/qc_metrics.R \
             --config     config/config.yaml \
             --out_dir    {params.out_dir}   \
             --gene_lists {input.gene_lists} \
+            > {log} 2>&1
+        """
+
+
+# ---------------------------------------------------------------------------
+# Rule: qc_metrics_roi
+# ---------------------------------------------------------------------------
+# ROI-restricted counterpart of qc_metrics: per-bin nCount / nFeature for the
+# fixed-size ROI-extracted 8µm objects of the matched animals
+# (config["stalign"]), all genes and the common-gene subset. Saves
+# metadata_roi{ROI_SIZE_LABEL}.rds for the Figure 2 ROI QC boxplots.
+
+rule qc_metrics_roi:
+    input:
+        gene_lists = "results/03_benchmarking/dataset_summary/gene_lists.rds",
+        visium     = expand(
+            "results/01_preprocessing/visium_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds",
+            sample = config["stalign"]["visiumhd"].values(),
+        ),
+        merscope   = expand(
+            "results/01_preprocessing/merscope_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds",
+            sample = config["stalign"]["matched_samples"]["merscope"].values(),
+        ),
+        xenium     = expand(
+            "results/01_preprocessing/xenium_8um_roi/{sample}_8um_roi_" + ROI_SIZE_LABEL + ".rds",
+            sample = config["stalign"]["matched_samples"]["xenium"].values(),
+        )
+    output:
+        metadata = "results/03_benchmarking/qc_metrics/metadata_roi" + ROI_SIZE_LABEL + ".rds"
+    log:
+        "logs/03_benchmarking/qc_metrics_roi.log"
+    benchmark:
+        "benchmarks/03_benchmarking/qc_metrics_roi.txt"
+    params:
+        out_dir   = "results/03_benchmarking/qc_metrics",
+        roi_label = ROI_SIZE_LABEL
+    envmodules:
+        "R/4.4.1",
+        "geos/3.12.1",
+        "hdf5/1.12.3",
+        "proj/9.4.0",
+        "gdal/3.9.0"
+    resources:
+        mem_mb        = 32000,
+        cpus_per_task = 2,
+        runtime       = 60,
+        slurm_partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 03_benchmarking/R/qc_metrics_roi.R \
+            --config     config/config.yaml \
+            --out_dir    {params.out_dir}   \
+            --gene_lists {input.gene_lists} \
+            --roi_label  {params.roi_label} \
             > {log} 2>&1
         """
 
@@ -234,7 +298,7 @@ rule qc_backgrounds:
         mem_mb        = 100000,
         cpus_per_task = 8,
         runtime       = 180,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/qc_backgrounds.R \
@@ -279,7 +343,7 @@ rule probe_rank:
         mem_mb        = 100000,
         cpus_per_task = 8,
         runtime       = 180,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/probe_rank.R \
@@ -326,7 +390,7 @@ rule gene_comparison:
         mem_mb        = 200000,
         cpus_per_task = 16,
         runtime       = 240,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/gene_comparison.R \
@@ -384,7 +448,7 @@ rule segmentation_quality:
         mem_mb        = 500000,
         cpus_per_task = 16,
         runtime       = 480,
-        partition     = "regular"
+        slurm_partition     = "regular"
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/segmentation_quality.R \

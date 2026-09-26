@@ -2,8 +2,8 @@
 #           and Xenium binning objects. Extracts per-sample bins, transcripts,
 #           sparsity, and common-gene equivalents for each resolution.
 # Inputs:   config/config.yaml  (visiumhd, spatial_analysis, bin_resolutions)
-#           results/01_preprocessing/merscope_{res}um/{sample}_{res}um.rds
-#           results/01_preprocessing/xenium_{res}um/{sample}_{res}um.rds
+#           results/01_preprocessing/merscope_{res}um_filtered/{sample}_{res}um_filtered.rds
+#           results/01_preprocessing/xenium_{res}um_filtered/{sample}_{res}um_filtered.rds
 # Outputs:  results/03_benchmarking/dataset_summary/metrics.rds
 
 suppressPackageStartupMessages({
@@ -33,6 +33,15 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
+# Path to a filtered (post empty-bin + DBSCAN QC) binning object written by
+# filter_binned.R, e.g. results/01_preprocessing/merscope_8um_filtered/
+# wt709_batch13_8um_filtered.rds
+filtered_bin_path <- function(output_dir, platform, sample, res) {
+  file.path(output_dir, "01_preprocessing",
+            paste0(platform, "_", res, "um_filtered"),
+            paste0(sample, "_", res, "um_filtered.rds"))
+}
 
 # Proportion of zero entries in a count matrix
 compute_sparsity <- function(count_matrix) {
@@ -150,33 +159,31 @@ visiumhd_objs <- lapply(names(visiumhd_samples), function(samp) {
 names(visiumhd_objs) <- names(visiumhd_samples)
 
 # ---------------------------------------------------------------------------
-# Load MERSCOPE binning objects
+# Load filtered MERSCOPE binning objects
 # ---------------------------------------------------------------------------
-message("Loading MERSCOPE binning objects...")
+message("Loading filtered MERSCOPE binning objects...")
 
 merscope_samples <- cfg$spatial_analysis$merscope_samples
 bin_resolutions  <- cfg$bin_resolutions
 
 merscope_objs <- lapply(bin_resolutions, function(res) {
-  bin_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0("merscope_", res, "um"))
   lapply(merscope_samples, function(samp) {
-    path <- file.path(bin_dir, paste0(samp, "_", res, "um.rds"))
+    path <- filtered_bin_path(cfg$output_dir, "merscope", samp, res)
     message("  ", samp, " @ ", res, "um: ", path)
     readRDS(path)
   }) |> setNames(merscope_samples)
 }) |> setNames(as.character(bin_resolutions))
 
 # ---------------------------------------------------------------------------
-# Load Xenium binning objects
+# Load filtered Xenium binning objects
 # ---------------------------------------------------------------------------
-message("Loading Xenium binning objects...")
+message("Loading filtered Xenium binning objects...")
 
 xenium_samples <- cfg$spatial_analysis$xenium_default_samples
 
 xenium_objs <- lapply(bin_resolutions, function(res) {
-  bin_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0("xenium_", res, "um"))
   lapply(xenium_samples, function(samp) {
-    path <- file.path(bin_dir, paste0(samp, "_", res, "um.rds"))
+    path <- filtered_bin_path(cfg$output_dir, "xenium", samp, res)
     message("  ", samp, " @ ", res, "um: ", path)
     readRDS(path)
   }) |> setNames(xenium_samples)

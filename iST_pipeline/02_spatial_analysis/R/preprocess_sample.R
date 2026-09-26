@@ -6,7 +6,8 @@
 # Outputs:  Seurat object with BANKSY assay saved as <out_dir>/<sample_name>.rds
 # Usage:    Rscript 02_spatial_analysis/R/preprocess_sample.R \
 #             --input_rds <path> --sample_name <name> \
-#             --platform <xenium|merscope> --seg <default|cellpose|proseg> \
+#             --platform <xenium|merscope> \
+#             --seg <default|cellpose|proseg|prosegv3_default|prosegv3_cellpose> \
 #             --assay <Xenium|Vizgen> \
 #             --qc_min_counts <int> --scale_factor <int> \
 #             --banksy_lambda <float> --banksy_k_geom <int> \
@@ -30,7 +31,7 @@ option_list <- list(
   make_option(c("--platform"),      type = "character", default = NULL,
               help = "Sequencing platform: xenium or merscope"),
   make_option(c("--seg"),           type = "character", default = NULL,
-              help = "Segmentation method: default, cellpose, or proseg"),
+              help = "Segmentation method: default, cellpose, proseg, prosegv3_default, prosegv3_cellpose, or binned"),
   make_option(c("--assay"),         type = "character", default = NULL,
               help = "Seurat assay name: Xenium (Xenium) or Vizgen (MERSCOPE)"),
   make_option(c("--qc_min_counts"), type = "integer",   default = NULL,
@@ -65,8 +66,8 @@ if (!opt$assay %in% c("Xenium", "Vizgen")) {
 if (!opt$platform %in% c("xenium", "merscope")) {
   stop("--platform must be 'xenium' or 'merscope'")
 }
-if (!opt$seg %in% c("default", "cellpose", "proseg")) {
-  stop("--seg must be 'default', 'cellpose', or 'proseg'")
+if (!opt$seg %in% c("default", "cellpose", "proseg", "prosegv3_default", "prosegv3_cellpose", "binned")) {
+  stop("--seg must be 'default', 'cellpose', 'proseg', 'prosegv3_default', 'prosegv3_cellpose', or 'binned'")
 }
 
 dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
