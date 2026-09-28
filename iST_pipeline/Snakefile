@@ -602,10 +602,18 @@ rule extended_fig2ext_probe_rank:
         "extended_figures/fig2ext_probe_rank/moransi_low_rank_genes.pdf"
 
 
+rule extended_fig2ext_qc_violins:
+    input:
+        "extended_figures/fig2ext_qc_violins/qc_violins_8um.pdf",
+        "extended_figures/fig2ext_qc_violins/qc_violins_16um.pdf"
+
+
 rule extended_all:
     input:
         "extended_figures/fig1ext_scrna_correlation/scrna_correlation_grid.pdf",
         "extended_figures/fig2ext_background/background_counts_persample.pdf",
         "extended_figures/fig2ext_background/moransi_persample.pdf",
         "extended_figures/fig2ext_probe_rank/probe_rank_persample.pdf",
-        "extended_figures/fig2ext_probe_rank/moransi_low_rank_genes.pdf"
+        "extended_figures/fig2ext_probe_rank/moransi_low_rank_genes.pdf",
+        "extended_figures/fig2ext_qc_violins/qc_violins_8um.pdf",
+        "extended_figures/fig2ext_qc_violins/qc_violins_16um.pdf"

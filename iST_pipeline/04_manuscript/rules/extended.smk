@@ -1,17 +1,20 @@
 # Rules:   fig1ext_scrna_correlation, fig2ext_background_persample,
-#          fig2ext_probe_rank_persample
+#          fig2ext_probe_rank_persample, fig2ext_qc_violins
 # Purpose: Extended manuscript figures from pre-computed benchmarking outputs
 #          (plotting only). Extended Data numbers are mapped in CLAUDE.md.
 # Inputs:  results/03_benchmarking/scrna_correlation/correlation_by_reference.rds
 #          results/03_benchmarking/qc_backgrounds/{background_per_sample,moransi_combined}.rds
 #          results/03_benchmarking/probe_rank/{ranked_sample.rds,label_pool_genes.csv}
+#          results/03_benchmarking/qc_metrics/metadata_combined.rds
 # Config keys used (fig2ext rules; fig1ext WT animals are set upstream in
 # scrna_correlation.R from config["scrna"]["wt_ids"]):
 #   config["spatial_analysis"]["merscope_samples"]       — animal columns
 #   config["spatial_analysis"]["xenium_default_samples"] — animal columns
 #   config["qc_backgrounds"]["exclude_samples"]          — expected missing animals
+#   config["gene_comparison"]["animals"]                 — VisiumHD animal IDs (qc_violins)
 # Targets (Snakefile): extended_fig1ext_scrna_correlation,
-#   extended_fig2ext_background, extended_fig2ext_probe_rank, extended_all
+#   extended_fig2ext_background, extended_fig2ext_probe_rank,
+#   extended_fig2ext_qc_violins, extended_all
 
 # ---------------------------------------------------------------------------
 # Rule: fig1ext_scrna_correlation
@@ -140,5 +143,46 @@ rule fig2ext_probe_rank_persample:
             --qc_backgrounds_dir {params.qc_backgrounds_dir} \
             --config             {input.config}               \
             --out_dir            {params.out_dir}             \
+            > {log} 2>&1
+        """
+
+
+# ---------------------------------------------------------------------------
+# Rule: fig2ext_qc_violins
+# ---------------------------------------------------------------------------
+# Supports: fig2_qc.R — the per-animal median counts/genes per bin summarise
+#           per-bin distributions that are consistent across animals
+# Panels (one PDF per bin size, 2 x 4 grid):
+#   - rows: counts/bin, genes/bin; columns: Visium HD all genes, then Visium HD,
+#     MERSCOPE and Xenium on the 90 common genes; one violin per animal
+
+rule fig2ext_qc_violins:
+    input:
+        script   = "04_manuscript/R/extended/fig2ext_qc_violins.R",
+        helpers  = "04_manuscript/R/utils/extended_helpers.R",
+        config   = "config/config.yaml",   # sample lists, gene_comparison.animals
+        metadata = "results/03_benchmarking/qc_metrics/metadata_combined.rds"
+    output:
+        violins_8um  = "extended_figures/fig2ext_qc_violins/qc_violins_8um.pdf",
+        violins_16um = "extended_figures/fig2ext_qc_violins/qc_violins_16um.pdf"
+    log:
+        "logs/04_manuscript/extended/fig2ext_qc_violins.log"
+    benchmark:
+        "benchmarks/04_manuscript/extended/fig2ext_qc_violins.txt"
+    params:
+        out_dir = "extended_figures/fig2ext_qc_violins"
+    envmodules:
+        "R/4.4.1"
+    resources:
+        mem_mb          = 16000,
+        cpus_per_task   = 2,
+        runtime         = 30,
+        slurm_partition = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose {input.script} \
+            --metadata {input.metadata} \
+            --config   {input.config}   \
+            --out_dir  {params.out_dir} \
             > {log} 2>&1
         """

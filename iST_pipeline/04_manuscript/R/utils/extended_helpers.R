@@ -1,5 +1,6 @@
 # Purpose:  Shared helpers for 04_manuscript/R/extended/ scripts: animal order,
-#           missing-animal check, theme_ext, facet_animals(), fixed-height saving.
+#           VisiumHD animal map, missing-animal check, theme_ext, facet_animals(),
+#           layout measuring and fixed-height saving.
 #           Source after theme.R (uses dims and patchwork).
 # Inputs:   none (functions only)
 # Outputs:  none (defines objects in the calling environment)
@@ -30,6 +31,20 @@ animal_levels_from_config <- function(cfg) {
          paste(sort(config_animals$Xenium), collapse = ", "))
   }
   order_animals(unique(config_animals$Xenium))
+}
+
+# VisiumHD sample names carry no condition (e.g. batch33_709), so map them to
+# animal IDs via config gene_comparison.animals (WT709 -> visiumhd: batch33_709).
+# Stops if a config VisiumHD sample has no animal.
+visiumhd_animal_map <- function(cfg) {
+  animals <- cfg$gene_comparison$animals
+  map     <- setNames(tolower(names(animals)), purrr::map_chr(animals, "visiumhd"))
+  unmapped <- setdiff(names(cfg$visiumhd$samples), names(map))
+  if (length(unmapped) > 0) {
+    stop("VisiumHD samples missing from config gene_comparison.animals: ",
+         paste(unmapped, collapse = ", "))
+  }
+  map
 }
 
 # Samples deliberately excluded upstream (no background signal), per platform
@@ -92,6 +107,14 @@ layout_height_mm <- function(p_fixed, width_mm = dims$full_w) {
   on.exit(dev.off())
   gt <- patchwork::patchworkGrob(p_fixed)
   grid::convertHeight(sum(gt$heights), "mm", valueOnly = TRUE)
+}
+
+# Page width (mm) of a patchwork with absolute panel widths (as layout_height_mm)
+layout_width_mm <- function(p_fixed, width_mm = dims$full_w) {
+  cairo_pdf(tempfile(fileext = ".pdf"), width = width_mm / 25.4, height = 10)
+  on.exit(dev.off())
+  gt <- patchwork::patchworkGrob(p_fixed)
+  grid::convertWidth(sum(gt$widths), "mm", valueOnly = TRUE)
 }
 
 # Panel height (mm) that makes a stacked patchwork fill page_h_mm: non-panel
