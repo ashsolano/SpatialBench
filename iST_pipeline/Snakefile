@@ -4,9 +4,10 @@ include: "01_preprocessing/rules/preprocessing.smk"
 include: "02_spatial_analysis/rules/spatial_analysis.smk"
 include: "03_benchmarking/rules/benchmarking.smk"
 include: "04_manuscript/rules/manuscript.smk"
+include: "04_manuscript/rules/extended.smk"
 
 
-# Default target: build all binned objects for all platforms and resolutions
+# Default target: binned objects for all platforms and resolutions
 rule all:
     input:
         expand(
@@ -21,18 +22,9 @@ rule all:
         ),
 
 
-# Named sub-targets — call these directly to run a single platform or resolution:
-#   snakemake xenium_binning        # all Xenium binned samples, all resolutions
-#   snakemake merscope_binning      # all MERSCOPE binned samples, all resolutions
-#   snakemake xenium_binning_filtered    # all Xenium binned samples, post-filter QC
-#   snakemake merscope_binning_filtered  # all MERSCOPE binned samples, post-filter QC
-#   snakemake xenium_default        # all Xenium default-segmentation samples
-#   snakemake xenium_cellpose       # all Xenium Cellpose-segmentation samples
-#   snakemake xenium_proseg         # all Xenium Proseg-segmentation samples
-#   snakemake merscope_default      # all MERSCOPE default-segmentation samples
-#   snakemake merscope_cellpose     # all MERSCOPE Cellpose-segmentation samples
-#   snakemake merscope_proseg       # all MERSCOPE Proseg-segmentation samples
-#   snakemake --config bin_resolutions=[8]   # override resolution for any binning target
+# 01_preprocessing targets, one per platform x method (e.g. snakemake xenium_binning).
+# *_binning_filtered adds post-filter QC. Override binning resolution with
+#   snakemake --config bin_resolutions=[8]
 
 rule xenium_binning:
     input:
@@ -78,10 +70,9 @@ rule merscope_binning_filtered:
         )
 
 
-# STalign registration — only the 4 matched samples per platform
-# (config["stalign"]["matched_samples"]). 8um only for now; the *_16um
-# targets are separate so 16um can be brought online independently once
-# ready.
+# STalign registration: only the 4 matched samples per platform
+# (config["stalign"]["matched_samples"]). 16um targets are separate so 16um can
+# be brought online independently of 8um.
 rule xenium_binning_aligned:
     input:
         expand(
@@ -163,20 +154,10 @@ rule merscope_proseg:
 
 
 # ---------------------------------------------------------------------------
-# 02_spatial_analysis — named sub-targets
+# 02_spatial_analysis — preprocess -> merge -> embed (spatial_{method})
 # ---------------------------------------------------------------------------
-# Run a single method end-to-end (preprocess -> merge -> embed):
-#   snakemake spatial_xenium_default           # 9 non-batch34 samples, default seg
-#   snakemake spatial_xenium_batch34_default   # 5 batch34 samples, default seg
-#   snakemake spatial_xenium_batch34_cellpose  # 5 batch34 samples, Cellpose seg
-#   snakemake spatial_xenium_batch34_proseg    # 5 batch34 samples, Proseg seg
-#   snakemake spatial_merscope_default
-#   snakemake spatial_merscope_cellpose
-#   snakemake spatial_merscope_proseg
-#   snakemake spatial_xenium_binned            # 9 non-batch34 samples, 8um binned+filtered
-#   snakemake spatial_merscope_binned          # 9 samples, 8um binned+filtered
-# Run all seven segmented methods:
-#   snakemake spatial_analysis
+# xenium_default/xenium_binned: 9 non-batch34 samples; xenium_batch34_*: 5 samples.
+# Binned objects are 8um, filtered. spatial_analysis runs the seven segmented methods.
 
 rule spatial_xenium_default:
     input:
@@ -236,19 +217,9 @@ rule spatial_analysis:
 
 
 # ---------------------------------------------------------------------------
-# Stage 4 — Annotation: spatial_annotate_{method}
+# 02_spatial_analysis — annotation (spatial_annotate_{method}, spatial_annotate_all)
 # ---------------------------------------------------------------------------
-# Assign cell type labels to clusters using config["annotations"][method].
-# Run one method at a time (after inspecting its UMAP and filling in config):
-#   snakemake spatial_annotate_xenium_default
-#   snakemake spatial_annotate_xenium_batch34_default
-#   snakemake spatial_annotate_xenium_batch34_cellpose
-#   snakemake spatial_annotate_xenium_batch34_proseg
-#   snakemake spatial_annotate_merscope_default
-#   snakemake spatial_annotate_merscope_cellpose
-#   snakemake spatial_annotate_merscope_proseg
-# Run all seven at once:
-#   snakemake spatial_annotate_all
+# Labels come from config["annotations"][method]; fill in after inspecting the UMAP.
 
 rule spatial_annotate_xenium_default:
     input:
@@ -298,20 +269,10 @@ rule spatial_annotate_all:
 
 
 # ---------------------------------------------------------------------------
-# Stage 5 — GC B cell subclustering: spatial_subcluster_gc_{method}
+# 02_spatial_analysis — GC B cell subclustering (spatial_subcluster_gc_{method}, _all)
 # ---------------------------------------------------------------------------
-# Subset GC B cells and run an independent BANKSY embedding per method.
-# Requires annotated.rds with cell_type == "GC B cells" populated.
-# Run one method at a time:
-#   snakemake spatial_subcluster_gc_xenium_default
-#   snakemake spatial_subcluster_gc_xenium_batch34_default
-#   snakemake spatial_subcluster_gc_xenium_batch34_cellpose
-#   snakemake spatial_subcluster_gc_xenium_batch34_proseg
-#   snakemake spatial_subcluster_gc_merscope_default
-#   snakemake spatial_subcluster_gc_merscope_cellpose
-#   snakemake spatial_subcluster_gc_merscope_proseg
-# Run all seven at once:
-#   snakemake spatial_subcluster_gc_all
+# Independent BANKSY embedding of GC B cells; requires cell_type == "GC B cells"
+# in annotated.rds.
 
 rule spatial_subcluster_gc_xenium_default:
     input:
@@ -361,20 +322,10 @@ rule spatial_subcluster_gc_all:
 
 
 # ---------------------------------------------------------------------------
-# Stage 6 — GC zone merging: spatial_merge_gc_zones_{method}
+# 02_spatial_analysis — GC zone merging (spatial_merge_gc_zones_{method}, _all)
 # ---------------------------------------------------------------------------
-# Inject gc_zone from the GC subset into the full object and build cell_type2.
-# Requires subclustered_gc.rds and config["gc_zones"][method] to be filled in.
-# Run one method at a time (after inspecting its GC UMAP and filling in config):
-#   snakemake spatial_merge_gc_zones_xenium_default
-#   snakemake spatial_merge_gc_zones_xenium_batch34_default
-#   snakemake spatial_merge_gc_zones_xenium_batch34_cellpose
-#   snakemake spatial_merge_gc_zones_xenium_batch34_proseg
-#   snakemake spatial_merge_gc_zones_merscope_default
-#   snakemake spatial_merge_gc_zones_merscope_cellpose
-#   snakemake spatial_merge_gc_zones_merscope_proseg
-# Run all seven at once:
-#   snakemake spatial_merge_gc_zones_all
+# Adds gc_zone from the GC subset to the full object and builds cell_type2.
+# Fill in config["gc_zones"][method] after inspecting the GC UMAP.
 
 rule spatial_merge_gc_zones_xenium_default:
     input:
@@ -424,18 +375,10 @@ rule spatial_merge_gc_zones_all:
 
 
 # ---------------------------------------------------------------------------
-# Stage 7 — Pseudobulk DE: spatial_de_{method}
+# 02_spatial_analysis — pseudobulk DE (spatial_de_{method}, spatial_de_all)
 # ---------------------------------------------------------------------------
-# KO vs WT limma-voom pseudobulk DE per cell type.
-# Only runs on methods with KO samples; xenium_batch34_* are excluded.
-# Requires annotated.rds with cell_type, condition, and animal_id columns.
-# Run one method at a time:
-#   snakemake spatial_de_xenium_default
-#   snakemake spatial_de_merscope_default
-#   snakemake spatial_de_merscope_cellpose
-#   snakemake spatial_de_merscope_proseg
-# Run all four at once:
-#   snakemake spatial_de_all
+# KO vs WT limma-voom per cell type. xenium_batch34_* excluded (no KO samples).
+# Requires annotated.rds with cell_type, condition and animal_id.
 
 rule spatial_de_xenium_default:
     input:
@@ -468,16 +411,7 @@ rule spatial_de_all:
 # ---------------------------------------------------------------------------
 # 03_benchmarking — named sub-targets
 # ---------------------------------------------------------------------------
-# Run individual benchmarking steps:
-#   snakemake benchmarking_dataset_summary
-#   snakemake benchmarking_scrna_correlation
-#   snakemake benchmarking_qc_metrics
-#   snakemake benchmarking_qc_backgrounds
-#   snakemake benchmarking_probe_rank
-#   snakemake benchmarking_gene_comparison
-#   snakemake benchmarking_segmentation_quality
-# Run all benchmarking steps:
-#   snakemake benchmarking_all
+# benchmarking_{step}: one step; benchmarking_all: all steps.
 
 rule benchmarking_dataset_summary:
     input:
@@ -487,7 +421,8 @@ rule benchmarking_dataset_summary:
 
 rule benchmarking_scrna_correlation:
     input:
-        "results/03_benchmarking/scrna_correlation/avg_expr.rds"
+        "results/03_benchmarking/scrna_correlation/avg_expr.rds",
+        "results/03_benchmarking/scrna_correlation/correlation_by_reference.rds"
 
 
 rule benchmarking_qc_metrics:
@@ -499,7 +434,9 @@ rule benchmarking_qc_metrics:
 rule benchmarking_qc_backgrounds:
     input:
         "results/03_benchmarking/qc_backgrounds/background_per_sample.rds",
-        "results/03_benchmarking/qc_backgrounds/fdr_results.rds"
+        "results/03_benchmarking/qc_backgrounds/background_summary.rds",
+        "results/03_benchmarking/qc_backgrounds/fdr_results.rds",
+        "results/03_benchmarking/qc_backgrounds/moransi_combined.rds"
 
 
 rule benchmarking_probe_rank:
@@ -512,6 +449,12 @@ rule benchmarking_gene_comparison:
     input:
         "results/03_benchmarking/gene_comparison/dge.rds",
         "results/03_benchmarking/gene_comparison/counts_mat.rds"
+
+
+rule benchmarking_variance_partition:
+    input:
+        "results/03_benchmarking/variance_partition/permanova_results.rds",
+        "results/03_benchmarking/variance_partition/variance_explained.rds"
 
 
 rule benchmarking_segmentation_quality:
@@ -533,10 +476,13 @@ rule benchmarking_all:
         "results/03_benchmarking/qc_metrics/metadata_roi" + ROI_SIZE_LABEL + ".rds",
         "results/03_benchmarking/qc_backgrounds/background_per_sample.rds",
         "results/03_benchmarking/qc_backgrounds/fdr_results.rds",
+        "results/03_benchmarking/qc_backgrounds/moransi_combined.rds",
         "results/03_benchmarking/probe_rank/ranked_plat.rds",
         "results/03_benchmarking/probe_rank/label_pool_genes.csv",
         "results/03_benchmarking/gene_comparison/dge.rds",
         "results/03_benchmarking/gene_comparison/counts_mat.rds",
+        "results/03_benchmarking/variance_partition/permanova_results.rds",
+        "results/03_benchmarking/variance_partition/variance_explained.rds",
         "results/03_benchmarking/segmentation_quality/metrics_long.rds",
         "results/03_benchmarking/segmentation_quality/umap_coords.rds",
         "results/03_benchmarking/segmentation_quality/cell_type_counts.rds",
@@ -548,14 +494,7 @@ rule benchmarking_all:
 # ---------------------------------------------------------------------------
 # 04_manuscript — named sub-targets
 # ---------------------------------------------------------------------------
-# Build individual figures:
-#   snakemake manuscript_fig1
-#   snakemake manuscript_fig2_qc
-#   snakemake manuscript_fig2_background
-#   snakemake manuscript_fig2_gene_comparison
-#   snakemake manuscript_fig3
-# Build all manuscript figures:
-#   snakemake manuscript_all
+# manuscript_{fig}: one main figure; manuscript_all: all of them.
 
 rule manuscript_fig1:
     input:
@@ -571,12 +510,17 @@ rule manuscript_fig2_qc:
         "figures/fig2/qc_counts_spatial.pdf",
         "figures/fig2/qc_genes_spatial.pdf",
         "figures/fig2/qc_counts_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
-        "figures/fig2/qc_genes_spatial_roi" + ROI_SIZE_LABEL + ".pdf"
+        "figures/fig2/qc_genes_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
+        "figures/fig2/qc_counts_flex_all.pdf",
+        "figures/fig2/qc_genes_flex_all.pdf",
+        "figures/fig2/qc_counts_flex_visiumhd.pdf",
+        "figures/fig2/qc_genes_flex_visiumhd.pdf"
 
 
 rule manuscript_fig2_background:
     input:
         "figures/fig2/background_vs_target.pdf",
+        "figures/fig2/moransi.pdf",
         "figures/fig2/fdr.pdf",
         "figures/fig2/probe_scurves.pdf"
 
@@ -584,6 +528,7 @@ rule manuscript_fig2_background:
 rule manuscript_fig2_gene_comparison:
     input:
         "figures/fig2/pseudobulk_mds.pdf",
+        "figures/fig2/variance_explained.pdf",
         "figures/fig2/avgexpr_scatter_visiumhd_merscope.pdf",
         "figures/fig2/avgexpr_scatter_visiumhd_xenium.pdf",
         "figures/fig2/avgexpr_scatter_merscope_xenium.pdf"
@@ -612,10 +557,16 @@ rule manuscript_all:
         "figures/fig2/qc_genes_spatial.pdf",
         "figures/fig2/qc_counts_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
         "figures/fig2/qc_genes_spatial_roi" + ROI_SIZE_LABEL + ".pdf",
+        "figures/fig2/qc_counts_flex_all.pdf",
+        "figures/fig2/qc_genes_flex_all.pdf",
+        "figures/fig2/qc_counts_flex_visiumhd.pdf",
+        "figures/fig2/qc_genes_flex_visiumhd.pdf",
         "figures/fig2/background_vs_target.pdf",
+        "figures/fig2/moransi.pdf",
         "figures/fig2/fdr.pdf",
         "figures/fig2/probe_scurves.pdf",
         "figures/fig2/pseudobulk_mds.pdf",
+        "figures/fig2/variance_explained.pdf",
         "figures/fig2/avgexpr_scatter_visiumhd_merscope.pdf",
         "figures/fig2/avgexpr_scatter_visiumhd_xenium.pdf",
         "figures/fig2/avgexpr_scatter_merscope_xenium.pdf",
@@ -628,3 +579,33 @@ rule manuscript_all:
         "figures/fig3/purity_dotplot.pdf",
         "figures/fig3/purity_heatmap.pdf"
 
+
+# ---------------------------------------------------------------------------
+# 04_manuscript extended figures — named sub-targets
+# ---------------------------------------------------------------------------
+# extended_{fig}: one extended figure; extended_all: all of them.
+
+rule extended_fig1ext_scrna_correlation:
+    input:
+        "extended_figures/fig1ext_scrna_correlation/scrna_correlation_grid.pdf"
+
+
+rule extended_fig2ext_background:
+    input:
+        "extended_figures/fig2ext_background/background_counts_persample.pdf",
+        "extended_figures/fig2ext_background/moransi_persample.pdf"
+
+
+rule extended_fig2ext_probe_rank:
+    input:
+        "extended_figures/fig2ext_probe_rank/probe_rank_persample.pdf",
+        "extended_figures/fig2ext_probe_rank/moransi_low_rank_genes.pdf"
+
+
+rule extended_all:
+    input:
+        "extended_figures/fig1ext_scrna_correlation/scrna_correlation_grid.pdf",
+        "extended_figures/fig2ext_background/background_counts_persample.pdf",
+        "extended_figures/fig2ext_background/moransi_persample.pdf",
+        "extended_figures/fig2ext_probe_rank/probe_rank_persample.pdf",
+        "extended_figures/fig2ext_probe_rank/moransi_low_rank_genes.pdf"

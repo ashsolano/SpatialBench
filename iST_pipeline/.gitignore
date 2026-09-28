@@ -12,6 +12,7 @@ data/processed/
 # Results and figures (generated outputs)
 results/
 figures/
+extended_figures/
 
 # Logs
 logs/
