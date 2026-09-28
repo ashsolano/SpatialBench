@@ -1,20 +1,12 @@
-# Purpose:  Figure 2 QC panels — platform QC panels.
-#           Spatial scatter montage coloured by nCount and nFeature across
-#           VisiumHD, MERSCOPE, and Xenium (3 platforms × 4 samples, 8µm bins).
-#           Per-platform dot plots (one shaped point per animal + median
-#           line) of median counts/bin and genes/bin (8µm bins,
-#           90-gene common subset) for the matched animals, for full tissue and
-#           for the fixed-size ROI (shared y-axis). Per-cell intersect-gene boxplots comparing
-#           VisiumHD, FLEX snRNA-seq, and scRNA-seq (optional; requires
-#           metadata_flex_scrna.rds from qc_metrics.R --sc_rds).
-#           Each panel saved as a separate PDF.
-#           Adapted from montage_v2.R, fig2_qcmetrics.R, flex_visiumhd_qc_v2.R.
-#           Montage coordinates: MERSCOPE/Xenium bins are read from the
-#           STalign-aligned objects, whose centroids are already in the
-#           matched VisiumHD sample's full-resolution pixel space. All three
-#           platforms are converted to µm with that VisiumHD sample's
-#           microns_per_pixel (config stalign$microns_per_pixel).
+# Purpose:  Figure 2 platform QC panels: nCount/nFeature spatial montages
+#           (VisiumHD, MERSCOPE, Xenium; 4 samples, 8µm bins), per-animal median
+#           counts/genes per bin (90 common genes; full tissue and ROI, shared
+#           y-axis), and optional FLEX / scRNA-seq / VisiumHD intersect-gene panels.
+#           Montage coordinates: aligned MERSCOPE/Xenium centroids are already in
+#           the matched VisiumHD sample's full-res pixel space, so all platforms
+#           are converted to µm with that sample's stalign$microns_per_pixel.
 # Inputs:   config/config.yaml
+#           VisiumHD objects in config visiumhd$data_dir
 #           results/01_preprocessing/merscope_8um_aligned/{sample}_8um_aligned.rds
 #           results/01_preprocessing/xenium_8um_aligned/{sample}_8um_aligned.rds
 #           results/03_benchmarking/qc_metrics/metadata_combined.rds
@@ -27,11 +19,7 @@
 #           figures/fig2/qc_genes_spatial.pdf
 #           figures/fig2/qc_counts_spatial_roi{roi_label}.pdf
 #           figures/fig2/qc_genes_spatial_roi{roi_label}.pdf
-#           figures/fig2/qc_counts_flex_all.pdf       (if FLEX metadata present)
-#           figures/fig2/qc_genes_flex_all.pdf        (if FLEX metadata present)
-#           figures/fig2/qc_counts_flex_visiumhd.pdf  (if FLEX metadata present)
-#           figures/fig2/qc_genes_flex_visiumhd.pdf   (if FLEX metadata present)
-
+#           figures/fig2/qc_{counts,genes}_flex_{all,visiumhd}.pdf (if FLEX metadata present)
 
 suppressPackageStartupMessages({
   library(Seurat)
@@ -94,11 +82,11 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 # ===========================================================================
 
 # ---------------------------------------------------------------------------
-# Sample mapping: display name -> config sample key
+# Sample mapping
 # ---------------------------------------------------------------------------
-# Display names are upper-case animal IDs (e.g. "KO168"); the matching
-# VisiumHD / MERSCOPE / Xenium sample keys come from the same config$stalign
-# mapping that align_binned.R used, so montage and alignment cannot diverge.
+# Display names are upper-case animal IDs (e.g. "KO168"); sample keys come from
+# the config$stalign mapping used by align_binned.R, so montage and alignment
+# cannot diverge.
 display_samples <- trimws(strsplit(opt$samples, ",")[[1]])
 animal_ids      <- setNames(tolower(display_samples), display_samples)
 
@@ -115,9 +103,8 @@ vis_sample_map <- lookup_keys(cfg$stalign$visiumhd)
 mer_sample_map <- lookup_keys(cfg$stalign$matched_samples$merscope)
 xen_sample_map <- lookup_keys(cfg$stalign$matched_samples$xenium)
 
-# µm per full-resolution pixel for each display sample's matched VisiumHD
-# sample — shared by all three platforms, since aligned MERSCOPE/Xenium
-# centroids live in that VisiumHD sample's pixel space.
+# µm per full-res pixel of the matched VisiumHD sample, shared by all three
+# platforms since aligned centroids live in that pixel space
 um_per_px <- setNames(
   vapply(vis_sample_map, function(k) as.numeric(cfg$stalign$microns_per_pixel[[k]]),
          numeric(1)),
@@ -125,9 +112,8 @@ um_per_px <- setNames(
 )
 
 # ---------------------------------------------------------------------------
-# Load Seurat objects for spatial montage (read-only; never modified/saved)
+# Load Seurat objects (read-only)
 # ---------------------------------------------------------------------------
-# Read one RDS per display sample from a directory + filename template
 load_objs <- function(sample_map, dir, suffix = "") {
   setNames(
     lapply(sample_map, function(key) {
@@ -159,10 +145,7 @@ xenium_objs <- load_objs(
   "_8um_aligned.rds"
 )
 
-# ---------------------------------------------------------------------------
-# Platform colour palette (muted, lightened for tile backgrounds)
-# ---------------------------------------------------------------------------
-# pal_muted is defined by theme.R; lighten() from colorspace
+# Tile backgrounds: lightened platform palette
 pal_bg <- colorspace::lighten(c(
   VisiumHD = pal_muted[["VisiumHD"]],
   MERSCOPE = pal_muted[["MERSCOPE"]],
@@ -170,26 +153,22 @@ pal_bg <- colorspace::lighten(c(
 ), amount = 0.2)
 
 # ---------------------------------------------------------------------------
-# Spatial data extraction helpers
+# Montage helpers
 # ---------------------------------------------------------------------------
 
-# Remove DBSCAN noise and return only the dominant cluster (VisiumHD only;
-# MERSCOPE/Xenium were already DBSCAN-filtered by filter_binned.R).
-# eps is in µm: 80 µm matches the previous eps = 8 low-res VisiumHD pixels
-# (8 px / 0.0272 lowres_scalef * 0.274 µm/px ≈ 80 µm).
+# Keep only the dominant DBSCAN cluster (VisiumHD only; MERSCOPE/Xenium were
+# already DBSCAN-filtered by filter_binned.R). eps in µm: 80 µm ≈ 8 low-res
+# VisiumHD pixels (8 px / 0.0272 lowres_scalef * 0.274 µm/px).
 filter_noise <- function(df, xcol = "x", ycol = "y", eps = 80, minPts = 10) {
   cl   <- dbscan::dbscan(as.matrix(df[, c(xcol, ycol)]), eps = eps, minPts = minPts)$cluster
   keep <- as.integer(names(which.max(table(cl[cl > 0]))))
   df[cl == keep, , drop = FALSE]
 }
 
-# Centre of a data frame's x/y bounding box
 extent_centre <- function(df) c(x = mean(range(df$x)), y = mean(range(df$y)))
 
-# Display-only 90° rotation, (x, y) -> (y, -x) about `centre`. Used for KO168
-# so its tissue matches the other samples' orientation. Applied identically
-# to all three platforms about the matched VisiumHD tissue centre, so their
-# relative alignment is preserved. Operates on the plotting data frame only.
+# Display-only 90° rotation, (x, y) -> (y, -x) about `centre` (used for KO168
+# to match the other samples' orientation)
 rotate90_df <- function(df, centre) {
   dx <- df$x - centre[["x"]]
   dy <- df$y - centre[["y"]]
@@ -214,7 +193,6 @@ pad_window <- function(win, frac = 0.10) {
        y = win$y + c(-dy, dy) * frac)
 }
 
-# Label grobs for the row (platform) and column (sample) axes
 row_label <- function(label) {
   ggplot() +
     annotate("text", x = 0.05, y = 0.5, label = label,
@@ -232,13 +210,8 @@ col_label <- function(label) {
     theme_void()
 }
 
-# ---------------------------------------------------------------------------
-# Extract coordinate + QC data frames from Seurat objects
-# ---------------------------------------------------------------------------
-
-# VisiumHD: native full-resolution pixel coordinates of the 8 µm bins,
-# converted to µm. Counts are matched to coordinates by barcode.
-# Filters bins with fewer than 5 counts to remove empty spots.
+# VisiumHD: full-res pixel coordinates -> µm, counts matched by barcode.
+# Bins with < 5 counts are dropped as empty spots.
 make_df_visium <- function(seu, um_px, bin_suffix = "008um") {
   assay_nm <- paste0("Spatial.", bin_suffix)
   img_nm   <- paste0("slice1.", bin_suffix)
@@ -256,8 +229,8 @@ make_df_visium <- function(seu, um_px, bin_suffix = "008um") {
     filter(nCount >= 5)
 }
 
-# MERSCOPE / Xenium: STalign-aligned centroids (VisiumHD full-res pixels),
-# converted to µm. Counts are matched to centroids by bin ID.
+# MERSCOPE / Xenium: aligned centroids (VisiumHD full-res pixels) -> µm,
+# counts matched by bin ID
 make_df_image <- function(seu, prefix, um_px) {
   raw <- seu@images[[1]]@boundaries[["centroids"]]@coords
   ids <- rownames(raw)
@@ -275,7 +248,7 @@ make_df_image <- function(seu, prefix, um_px) {
 }
 
 # ---------------------------------------------------------------------------
-# Extract all data frames
+# Extract plotting data frames
 # ---------------------------------------------------------------------------
 message("Extracting VisiumHD coordinates and QC metrics...")
 vis_dfs <- setNames(
@@ -307,9 +280,8 @@ xen_dfs <- setNames(
 # ---------------------------------------------------------------------------
 # Display-only KO168 rotation
 # ---------------------------------------------------------------------------
-# All three platforms are rotated about the same centre (the matched VisiumHD
-# tissue extent), so they stay registered to each other. Seurat objects and
-# aligned coordinates are untouched; only these plotting data frames change.
+# All platforms rotate about the matched VisiumHD tissue centre so they stay
+# registered; only the plotting data frames change.
 rotate_samples <- intersect("KO168", display_samples)
 
 for (s in rotate_samples) {
@@ -322,16 +294,16 @@ for (s in rotate_samples) {
 }
 
 # ---------------------------------------------------------------------------
-# Compute shared plot window and per-platform colour limits
+# Plot window and colour limits
 # ---------------------------------------------------------------------------
-# Window is computed after rotation so rotated tissue is never clipped.
+# Window is computed after rotation so rotated tissue is never clipped
 all_df <- bind_rows(
   bind_rows(vis_dfs_clean, .id = "id") %>% mutate(platform = "VisiumHD"),
   bind_rows(mer_dfs,       .id = "id") %>% mutate(platform = "MERSCOPE"),
   bind_rows(xen_dfs,       .id = "id") %>% mutate(platform = "Xenium")
 )
 
-# Square, padded window that encompasses all three platforms
+# One square, padded window shared by all three platforms
 global_sq  <- make_square(list(x = range(all_df$x), y = range(all_df$y)))
 global_pad <- pad_window(global_sq, frac = 0.10)
 vis_sq <- mer_sq <- xen_sq <- global_pad
@@ -352,11 +324,11 @@ quant_ranges <- list(
 )
 
 # ---------------------------------------------------------------------------
-# Core tile plot function
+# Montage tiles, legends and assembly
 # ---------------------------------------------------------------------------
-# Draws one spatial scatter tile with a 1 mm scale bar (coordinates in µm).
-# limits clamps the viridis colour scale for cross-sample comparability.
-# All platforms share one coordinate space, so no per-platform axis flip.
+# One tile with a 1 mm scale bar (coordinates in µm); `limits` clamps the
+# colour scale so samples are comparable. All platforms share one coordinate
+# space, so no per-platform axis flip.
 plot_tile <- function(df, platform, win, value_col, limits) {
   sb     <- 1000              # 1 mm in µm
   dx     <- diff(win$x); dy <- diff(win$y)
@@ -389,9 +361,6 @@ plot_tile <- function(df, platform, win, value_col, limits) {
     annotate("segment", x = bar_x2, xend = bar_x2, y = y0,     yend = y1,     linewidth = 0.3)
 }
 
-# ---------------------------------------------------------------------------
-# Colourbar legend builder
-# ---------------------------------------------------------------------------
 make_legend <- function(vals, title_txt) {
   lims  <- quantile(vals, c(0.05, 0.95), na.rm = TRUE)
   ticks <- ceiling(lims)
@@ -418,15 +387,11 @@ make_legend <- function(vals, title_txt) {
   suppressWarnings(cowplot::get_legend(p))
 }
 
-# ---------------------------------------------------------------------------
-# Panel builder: returns a gtable for one metric (nCount or nFeature)
-# ---------------------------------------------------------------------------
-# KO168 data frames were already rotated for display (see above).
+# Returns a gtable for one metric
 build_montage_panel <- function(metric = c("nCount", "nFeature")) {
   metric    <- match.arg(metric)
   leg_title <- if (metric == "nCount") "Transcripts" else "Genes"
 
-  # Build tile grobs for each platform
   platform_tiles <- function(dfs, platform, win) {
     lapply(display_samples, function(s) {
       ggplotGrob(plot_tile(dfs[[s]], platform, win, metric,
@@ -437,19 +402,17 @@ build_montage_panel <- function(metric = c("nCount", "nFeature")) {
   mer_grobs <- platform_tiles(mer_dfs,       "MERSCOPE", mer_sq)
   xen_grobs <- platform_tiles(xen_dfs,       "Xenium",   xen_sq)
 
-  # Label and spacer grobs
   blank_grob      <- ggplotGrob(ggplot() + theme_void())
   col_label_grobs <- lapply(display_samples, function(s) ggplotGrob(col_label(s)))
   row_label_grobs <- lapply(c("VisiumHD", "MERSCOPE", "Xenium"),
                             function(lbl) ggplotGrob(row_label(lbl)))
 
-  # Per-platform colourbar legends
   leg_vis <- make_legend(unlist(lapply(vis_dfs_clean, `[[`, metric)), leg_title)
   leg_mer <- make_legend(unlist(lapply(mer_dfs,       `[[`, metric)), leg_title)
   leg_xen <- make_legend(unlist(lapply(xen_dfs,       `[[`, metric)), leg_title)
 
-  # Assemble a grid with one column per sample: header row of column labels,
-  # then one row per platform (row label, tiles, legend), separated by spacers.
+  # Grid: header row of sample labels, then per platform a spacer row and a
+  # row of (row label, tiles, legend)
   n_col      <- length(display_samples) + 1           # row-label column + tiles
   spacer_row <- replicate(n_col, nullGrob(), simplify = FALSE)
   platform_rows <- list(
@@ -461,11 +424,9 @@ build_montage_panel <- function(metric = c("nCount", "nFeature")) {
   all_grobs  <- c(list(blank_grob), col_label_grobs)
   layout_mat <- rbind(c(seq_len(n_col), NA))
   for (pr in platform_rows) {
-    # Spacer row (no legend cell)
     idx        <- length(all_grobs) + seq_len(n_col)
     all_grobs  <- c(all_grobs, spacer_row)
     layout_mat <- rbind(layout_mat, c(idx, NA))
-    # Platform row: label, one tile per sample, legend
     row_grobs  <- c(list(pr[[1]]), pr[[2]], list(pr[[3]]))
     idx        <- length(all_grobs) + seq_along(row_grobs)
     all_grobs  <- c(all_grobs, row_grobs)
@@ -484,8 +445,8 @@ build_montage_panel <- function(metric = c("nCount", "nFeature")) {
   )
 }
 
-# Wrap a gtable in a ggdraw canvas for ggsave compatibility
-# Width defaults to the 4-sample layout (12 + 4 × 30 + 10 mm, plus margin)
+# Wrap the gtable in a ggdraw canvas for ggsave; default width matches the
+# grid widths plus a 2 mm margin
 save_montage_panel <- function(grob, filename,
                                width_mm  = 14 + 30 * length(display_samples) + 10,
                                height_mm = 108) {
@@ -515,12 +476,10 @@ if (opt$montage_only) {
 }
 
 # ===========================================================================
-# QC METRIC BOXPLOTS (spatial platforms + FLEX comparison)
+# QC METRIC PANELS (spatial platforms + FLEX comparison)
 # ===========================================================================
 
-# ---------------------------------------------------------------------------
-# Helper: compute 4-tick y-axis breaks from the data maximum
-# ---------------------------------------------------------------------------
+# 4 y-axis breaks (0 + 3 steps rounded up to a multiple of 10) covering x
 four_ticks <- function(x) {
   step  <- ceiling((x / 3) / 10) * 10
   upper <- step * 3
@@ -530,18 +489,15 @@ four_ticks <- function(x) {
 # ---------------------------------------------------------------------------
 # Spatial platform QC panels (VisiumHD / MERSCOPE / Xenium)
 # ---------------------------------------------------------------------------
-# Two parallel versions of the same comparison: full tissue
-# (metadata_combined.rds) and the fixed-size ROI (metadata_roi{label}.rds).
-# Both are restricted to the matched animals, filtered to 8µm bins and the
-# 90-gene common subset, then summarised to one median value per
-# sample × platform. Full and ROI panels share a y-axis per metric.
+# Full tissue and fixed-size ROI, both restricted to the matched animals and
+# summarised to one median per sample × platform; full and ROI share a y-axis.
 
 message("Loading metadata_combined and ROI metadata...")
 metadata_combined <- readRDS(meta_combined_path)
 metadata_roi      <- readRDS(meta_roi_path)
 
-# Keep only the matched animals (config$stalign) on every platform, so all
-# three platforms show the same animals. Stops if any platform is incomplete.
+# Keep only the matched animals (config$stalign) so all platforms show the
+# same animals; stops if any platform is incomplete
 matched_animals <- names(cfg$stalign$visiumhd)
 matched_keys <- list(
   VisiumHD = unlist(cfg$stalign$visiumhd[matched_animals]),
@@ -569,8 +525,9 @@ filter_matched <- function(meta) {
 key_to_animal <- setNames(rep(toupper(matched_animals), length(matched_keys)),
                           unlist(lapply(matched_keys, unname)))
 
-# One point shape per animal, shared across all three platforms
-animal_shapes <- c(WT709 = 21, WT713 = 22, KO167 = 24, KO168 = 23)
+# One shape per animal across all Figure 2 QC plots. WT708 appears only in the
+# scRNA-seq reference (FLEX panels); absent animals drop out of the legend.
+animal_shapes <- c(WT708 = 25, WT709 = 21, WT713 = 22, KO167 = 24, KO168 = 23)
 
 # One median per sample × platform (8µm bins, 90-gene subset)
 summarise_qc <- function(meta, yvar) {
@@ -578,7 +535,7 @@ summarise_qc <- function(meta, yvar) {
     dplyr::filter(Subset == "90", bin_size == "8um") %>%
     dplyr::group_by(Sample, platform) %>%
     dplyr::summarise(val = median(.data[[yvar]]), .groups = "drop") %>%
-    # fix order for consistent jitter position across runs
+    # Fixed order so dodge positions are stable across runs
     dplyr::arrange(platform, Sample) %>%
     dplyr::mutate(
       platform = factor(platform, levels = c("VisiumHD", "MERSCOPE", "Xenium")),
@@ -601,7 +558,7 @@ make_spatial_qc_panel <- function(df, ylab, subtitle, ax) {
   df <- df %>% dplyr::mutate(subtitle = subtitle)
 
   ggplot(df, aes(x = platform, y = val)) +
-    # Median across the four animals: horizontal black line per platform
+    # Median across animals as a horizontal line
     stat_summary(
       fun       = median,
       fun.min   = median,
@@ -611,9 +568,7 @@ make_spatial_qc_panel <- function(df, ylab, subtitle, ax) {
       linewidth = 0.6,
       colour    = "black"
     ) +
-    # One point per animal: platform colour fill, animal-specific shape.
-    # Each animal gets a fixed horizontal slot (same order on every platform)
-    # so animals with tied medians never overlap.
+    # Fixed dodge slot per animal so tied medians never overlap
     geom_point(
       aes(fill = platform, shape = animal, group = animal),
       position = position_dodge(width = 0.30),
@@ -661,7 +616,7 @@ for (m in names(qc_metrics_plot)) {
   spec <- qc_metrics_plot[[m]]
   summ <- lapply(qc_sets, summarise_qc, yvar = spec$yvar)
 
-  # Shared y-axis: computed from the maximum across full and ROI versions
+  # Shared y-axis across full and ROI versions
   ax <- four_ticks(max(unlist(lapply(summ, `[[`, "val")), na.rm = TRUE))
 
   for (set in names(summ)) {
@@ -682,8 +637,7 @@ for (m in names(qc_metrics_plot)) {
 # ---------------------------------------------------------------------------
 # FLEX / scRNA-seq intersect-gene QC panels
 # ---------------------------------------------------------------------------
-# Skipped gracefully if metadata_flex_scrna.rds was not produced (--sc_rds
-# was omitted from qc_metrics.R).
+# Skipped if metadata_flex_scrna.rds is absent (qc_metrics.R run without --sc_rds)
 if (!file.exists(meta_flex_path)) {
   message("Skipping FLEX panels: ", meta_flex_path, " not found.")
   message("  Re-run qc_metrics.R with --sc_rds to generate this file.")
@@ -696,15 +650,27 @@ metadata_flex_scrna <- readRDS(meta_flex_path)
 genes_intersect     <- readRDS(genes_intersect_path)
 subtitle_flex       <- paste0("Intersect genes (n = ", length(genes_intersect), ")")
 
-# Colour palette for the FLEX comparison platforms (not in scale_fill_platform)
+# Animal label per sample: VisiumHD keys via config$stalign (key_to_animal);
+# FLEX ("FLEX_709") and scRNA-seq ("scRNA_708") IDs via config$scrna$animal_labels
+flex_sample_to_animal <- function(sample, platform) {
+  sc_id   <- sub("^(FLEX|scRNA)_", "", sample)
+  sc_lab  <- unlist(cfg$scrna$animal_labels)[sc_id]
+  animal  <- ifelse(platform == "VisiumHD", key_to_animal[sample], sc_lab)
+  if (anyNA(animal)) {
+    stop("No animal label for sample(s): ", paste(unique(sample[is.na(animal)]), collapse = ", "),
+         " — add them to config$scrna$animal_labels")
+  }
+  factor(unname(animal), levels = names(animal_shapes))
+}
+
+# FLEX comparison platforms are not in scale_fill_platform
 pal_flex <- c(
   scRNAseq = "#333333",
   FLEX     = "#888888",
   VisiumHD = pal_muted[["VisiumHD"]]
 )
 
-# Build one intersect-gene QC panel, optionally subsetting to specific platforms.
-# platforms_keep controls both the data filter and the fill scale.
+# platforms_keep sets both the data filter and the fill scale
 make_flex_qc_panel <- function(yvar, ylab,
                                platforms_keep = c("scRNAseq", "FLEX", "VisiumHD")) {
 
@@ -713,6 +679,7 @@ make_flex_qc_panel <- function(yvar, ylab,
     dplyr::group_by(Sample, platform) %>%
     dplyr::summarise(val = median(.data[[yvar]]), .groups = "drop") %>%
     dplyr::mutate(
+      animal   = flex_sample_to_animal(Sample, as.character(platform)),
       platform = factor(platform, levels = platforms_keep),
       subtitle = subtitle_flex
     )
@@ -720,21 +687,31 @@ make_flex_qc_panel <- function(yvar, ylab,
   ax <- four_ticks(max(df$val, na.rm = TRUE))
 
   ggplot(df, aes(x = platform, y = val)) +
-    geom_boxplot(
-      aes(fill = platform),
-      outlier.shape = NA,
-      width         = 0.7
+    # Median across animals as a horizontal line
+    stat_summary(
+      fun       = median,
+      fun.min   = median,
+      fun.max   = median,
+      geom      = "errorbar",
+      width     = 0.35,
+      linewidth = 0.6,
+      colour    = "black"
     ) +
+    # Fixed dodge slot per animal so tied medians never overlap
     geom_point(
-      aes(fill = platform, group = Sample),
-      position = position_jitter(width = 0.08, height = 0),
-      shape  = 21,
+      aes(fill = platform, shape = animal, group = animal),
+      position = position_dodge(width = 0.30),
       colour = "grey20",
       stroke = 0.35,
       size   = 2.0,
       alpha  = 0.80
     ) +
-    scale_fill_manual(values = pal_flex[platforms_keep]) +
+    scale_fill_manual(values = pal_flex[platforms_keep], guide = "none") +
+    scale_shape_manual(
+      values = animal_shapes,
+      name   = "Animal",
+      guide  = guide_legend(override.aes = list(fill = "grey70", alpha = 1))
+    ) +
     scale_y_continuous(
       limits = c(0, ax$upper),
       breaks = ax$breaks,
@@ -745,7 +722,7 @@ make_flex_qc_panel <- function(yvar, ylab,
     facet_wrap(~ subtitle, ncol = 1) +
     theme_sb() +
     theme(
-      legend.position  = "none",
+      legend.position  = "right",
       axis.text.x      = element_text(angle = 45, hjust = 1),
       axis.line        = element_line(colour = "black"),
       strip.background = element_rect(colour = "black", fill = "white"),
@@ -780,6 +757,10 @@ message("Saved: qc_genes_flex_all.pdf")
 
 message("Building FLEX QC panels (FLEX + VisiumHD only)...")
 
+# Extra width for the animal legend so the narrow two-platform panel's
+# plotting area is not squeezed
+legend_w_mm <- 25
+
 p_flex_counts_fxvs <- make_flex_qc_panel(
   "nCount_intersect",
   "Median counts per bin/cell (intersect genes)",
@@ -793,13 +774,13 @@ p_flex_genes_fxvs  <- make_flex_qc_panel(
 
 ggsave(file.path(opt$out_dir, "qc_counts_flex_visiumhd.pdf"),
        p_flex_counts_fxvs,
-       width = dims$half_w * 0.6, height = dims$half_w * 1.4,
+       width = dims$half_w * 0.6 + legend_w_mm, height = dims$half_w * 1.4,
        units = "mm", device = cairo_pdf, bg = "white")
 message("Saved: qc_counts_flex_visiumhd.pdf")
 
 ggsave(file.path(opt$out_dir, "qc_genes_flex_visiumhd.pdf"),
        p_flex_genes_fxvs,
-       width = dims$half_w * 0.6, height = dims$half_w * 1.4,
+       width = dims$half_w * 0.6 + legend_w_mm, height = dims$half_w * 1.4,
        units = "mm", device = cairo_pdf, bg = "white")
 message("Saved: qc_genes_flex_visiumhd.pdf")
 

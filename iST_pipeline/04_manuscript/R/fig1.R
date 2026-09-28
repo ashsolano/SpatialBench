@@ -1,15 +1,16 @@
-# Purpose:  Manuscript Figure 1 — cross-platform dataset summary.
-#           Panel A: horizontal bar chart of bins, transcripts, and sparsity for
-#           VisiumHD, MERSCOPE, and Xenium at 8µm and 16µm binning resolutions.
-#           Panel B: Venn diagram of gene panel overlap across the three platforms.
-#           Panel C: density scatter plots of pseudobulk log10(CPM+1) correlation
-#           between 10X FLEX scRNA-seq and each ST platform (WT samples, 8µm).
+# Purpose:  Figure 1 — cross-platform dataset summary.
+#           Panels: A bins/transcripts/sparsity bar chart (8µm, 16µm);
+#           B gene panel Venn; C pseudobulk log10(CPM+1) density scatter,
+#           10X FLEX vs each ST platform (WT, 8µm).
 # Inputs:   results/03_benchmarking/dataset_summary/metrics.rds
 #           results/03_benchmarking/dataset_summary/gene_lists.rds
 #           results/03_benchmarking/scrna_correlation/avg_expr.rds
 # Outputs:  figures/fig1/fig1_barplot.pdf
 #           figures/fig1/fig1_venn.pdf
 #           figures/fig1/fig1_scrna_correlation.pdf
+# Extended figures: extended/fig1ext_scrna_correlation.R (panel C for both
+#           single-cell references, 10X FLEX and 10X 3' GEX, on pairwise and
+#           common 90-gene sets)
 
 suppressPackageStartupMessages({
   library(ggplot2)
@@ -23,6 +24,7 @@ suppressPackageStartupMessages({
 
 source("04_manuscript/R/utils/theme.R")
 source("04_manuscript/R/utils/palettes.R")
+source("04_manuscript/R/utils/plot_helpers.R")   # generate_density_plot()
 
 # ---------------------------------------------------------------------------
 # CLI arguments
@@ -46,9 +48,6 @@ if (is.null(opt$gene_lists))              stop("--gene_lists is required")
 if (!file.exists(opt$scrna_cor_rds)) stop("--scrna_cor_rds not found: ", opt$scrna_cor_rds)
 dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 
-# ---------------------------------------------------------------------------
-# Load pre-computed data
-# ---------------------------------------------------------------------------
 combined_data <- readRDS(opt$input_rds)
 gene_lists    <- readRDS(opt$gene_lists)
 
@@ -61,7 +60,6 @@ binning_levels <- c("8µm", "16µm")
 # Platform order as read top-to-bottom on the bar plot (y axis reversed in plot_fun)
 technology_levels <- c("MERSCOPE", "Xenium", "VisiumHD")
 
-# Drop the Genes metric and any rows with NA binning
 combined_data <- combined_data |>
   dplyr::filter(Metric != "Genes", !is.na(Binning)) |>
   dplyr::mutate(
@@ -93,48 +91,6 @@ summary_data <- combined_data |>
 # ---------------------------------------------------------------------------
 # Plotting helpers
 # ---------------------------------------------------------------------------
-
-# Density scatter plot of pseudobulk log10(CPM+1) for one platform vs scRNA-seq.
-# color_low/color_high are the gradient endpoints for the 2D density contours.
-# adjust scales the KDE bandwidth and bins sets the number of filled contour
-# levels (both platform-specific; display only). All genes are used.
-# Axis limits are applied via coord_fixed() so no points are dropped before
-# density estimation (scale limits would convert out-of-range values to NA).
-generate_density_plot <- function(expr_data, cor_value, n_genes,
-                                  platform_name, color_low, color_high,
-                                  axis_limits, adjust = 1.5, bins = 8) {
-  x_pos <- axis_limits[2] - 0.05 * diff(axis_limits)
-  y_pos <- axis_limits[1] + 0.05 * diff(axis_limits)
-
-  ggplot(expr_data, aes(x = scRNA, y = ST)) +
-    geom_point(color = "grey80", size = 0.4, alpha = 0.35, na.rm = TRUE) +
-    stat_density_2d(
-      aes(fill = after_stat(level), alpha = after_stat(level)),
-      geom = "polygon", color = "black", linewidth = 0.3,
-      contour = TRUE, bins = bins, adjust = adjust, na.rm = TRUE
-    ) +
-    scale_fill_gradient(low = color_low, high = color_high) +
-    scale_alpha(range = c(0.2, 0.75), guide = "none") +
-    geom_abline(slope = 1, intercept = 0,
-                color = "black", linewidth = 0.4, linetype = "dashed") +
-    # expand_limits() widens the scale range (and hence the KDE evaluation grid)
-    # to the full axis range without dropping data, so contours are not cut flat
-    # at the data extremes; coord_fixed() then crops the display to axis_limits.
-    expand_limits(x = axis_limits, y = axis_limits) +
-    coord_fixed(xlim = axis_limits, ylim = axis_limits, expand = FALSE) +
-    annotate("text", x = x_pos, y = y_pos,
-             label = paste0("R = ", round(cor_value, 2), "\nn = ", n_genes),
-             size = 3, hjust = 1, vjust = 0, color = "black") +
-    labs(x = "10X FLEX WT log10(CPM + 1)",
-         y = paste0(platform_name, " WT log10(CPM + 1)")) +
-    theme_sb() +
-    theme(
-      panel.border    = element_rect(color = "black", fill = NA, linewidth = 0.8),
-      aspect.ratio    = 1,
-      legend.position = "none"
-    )
-}
-
 # Format numbers with SI suffix and one decimal place (e.g. 1.2M, 300K)
 fmt_si_1dp <- function(x) {
   out <- character(length(x))
@@ -150,9 +106,7 @@ fmt_si_1dp <- function(x) {
   out
 }
 
-# Horizontal bar chart with mean bars, SEM error bars, and individual points.
-# Uses scale_fill_platform() from theme.R so colours stay consistent with the
-# rest of the manuscript.
+# Horizontal bar chart: mean bars, SEM error bars, per-sample points
 plot_fun <- function(df, summary_df, title) {
   pos <- position_dodge(width = 0.8)
 
@@ -274,14 +228,6 @@ message("Saved: ", file.path(opt$out_dir, "fig1_venn.pdf"))
 # ---------------------------------------------------------------------------
 # Panel C — scRNA-seq vs ST pseudobulk correlation density plots
 # ---------------------------------------------------------------------------
-
-# Light variants of pal_muted for the density gradient low ends
-pal_muted_light <- c(
-  VisiumHD = "#e5f5d6",   # near-white olive-green
-  MERSCOPE = "#f5d9ec",   # near-white plum
-  Xenium   = "#d9e8f5"    # near-white indigo
-)
-
 avg_expr <- readRDS(opt$scrna_cor_rds)
 
 # Shared axis limits across all three platforms for visual comparability
@@ -308,7 +254,7 @@ p_visiumhd_cor <- generate_density_plot(
   # All genes, no expression threshold; fewer contour levels than the
   # targeted panels because Visium HD has ~15k genes. Display only.
   adjust      = 1.5,
-  bins        = 6
+  bins        = density_contour_bins["VisiumHD"]
 )
 
 p_merscope_cor <- generate_density_plot(
@@ -318,7 +264,7 @@ p_merscope_cor <- generate_density_plot(
   color_high = pal_muted["MERSCOPE"],
   axis_limits = axis_limits,
   adjust      = 1.5,
-  bins        = 8
+  bins        = density_contour_bins["MERSCOPE"]
 )
 
 p_xenium_cor <- generate_density_plot(
@@ -328,7 +274,7 @@ p_xenium_cor <- generate_density_plot(
   color_high = pal_muted["Xenium"],
   axis_limits = axis_limits,
   adjust      = 1.5,
-  bins        = 8
+  bins        = density_contour_bins["Xenium"]
 )
 
 p_fig1c <- p_visiumhd_cor + p_merscope_cor + p_xenium_cor +

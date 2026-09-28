@@ -1,8 +1,8 @@
 # Purpose:  Shared ggplot2 theme, colour palettes, and figure dimension
 #           constants for all SpatialBench manuscript figures.
-#           Source this file at the top of every figure assembly script.
 # Inputs:   none
-# Outputs:  none (defines objects in the calling environment)
+# Outputs:  pal_muted, pal_fill, scale_*_platform(), theme_sb(),
+#           theme_bg_panels, dims (in calling environment)
 
 library(ggplot2)
 library(patchwork)
@@ -42,12 +42,25 @@ theme_sb <- function(base_family = "Arial", base_size = 7) {
     )
 }
 
+# Additions for the background / Moran's I panels (add after theme_sb());
+# shared by fig2_background.R and extended/fig2ext_background_persample.R
+theme_bg_panels <- theme(
+  axis.text.x      = element_text(angle = 45, hjust = 1),
+  legend.position  = "none",
+  axis.line        = element_line(colour = "black"),
+  strip.background = element_rect(colour = "black", fill = "white"),
+  strip.text       = element_text(face = "italic"),
+  panel.background = element_blank(),
+  panel.border     = element_blank(),
+  plot.background  = element_blank(),
+  panel.spacing    = unit(2, "mm")
+)
+
 # A4 paper size and margins (millimetres)
 paper_mm   <- list(width = 210, height = 297)
 margins_mm <- list(horiz = 20, vert = 20)
 
 # Figure dimensions (millimetres)
-# Usage: pass dims$full_w / dims$half_w to ggsave(width = ..., units = "mm")
 dims <- list(
   full_w  = paper_mm$width  - 2 * margins_mm$horiz,        # ~170 mm — double-column
   half_w  = (paper_mm$width - 2 * margins_mm$horiz) / 2,   # ~85 mm  — single-column

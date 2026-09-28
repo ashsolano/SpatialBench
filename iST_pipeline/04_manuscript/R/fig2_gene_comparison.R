@@ -1,10 +1,10 @@
-# Purpose:  Figure 2 gene comparison panels: pseudobulk MDS plot and
-#           per-gene average-expression scatter plots across platforms.
-#           Reads the DGEList produced by gene_comparison.R and saves each
-#           panel as a separate PDF.
-#           Adapted from fig2_pseudobulk_mds.R and fig2_avgexpr_scatter_v2.R.
+# Purpose:  Figure 2 gene comparison panels: pseudobulk MDS, variance
+#           explained by Platform / Group (PERMANOVA R2) and per-gene
+#           average-expression scatter plots for each platform pair.
 # Inputs:   results/03_benchmarking/gene_comparison/dge.rds
+#           results/03_benchmarking/variance_partition/variance_explained.rds
 # Outputs:  figures/fig2/pseudobulk_mds.pdf
+#           figures/fig2/variance_explained.pdf
 #           figures/fig2/avgexpr_scatter_visiumhd_merscope.pdf
 #           figures/fig2/avgexpr_scatter_visiumhd_xenium.pdf
 #           figures/fig2/avgexpr_scatter_merscope_xenium.pdf
@@ -30,14 +30,19 @@ option_list <- list(
   make_option(c("--input_dir"), type = "character",
               default = "results/03_benchmarking/gene_comparison",
               help    = "Directory containing gene_comparison.R outputs [default: %default]"),
+  make_option(c("--var_part_dir"), type = "character",
+              default = "results/03_benchmarking/variance_partition",
+              help    = "Directory containing variance_partition.R outputs [default: %default]"),
   make_option(c("--out_dir"),   type = "character",
               default = "figures/fig2",
               help    = "Output directory for panel PDFs [default: %default]")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
 
-dge_path <- file.path(opt$input_dir, "dge.rds")
-if (!file.exists(dge_path)) stop("Not found: ", dge_path)
+dge_path      <- file.path(opt$input_dir, "dge.rds")
+var_part_path <- file.path(opt$var_part_dir, "variance_explained.rds")
+if (!file.exists(dge_path))      stop("Not found: ", dge_path)
+if (!file.exists(var_part_path)) stop("Not found: ", var_part_path)
 
 dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -47,18 +52,12 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 message("Loading DGEList...")
 dge    <- readRDS(dge_path) |> calcNormFactors()
 
-# Metadata: rownames are Platform_SampleID (column names of counts_mat)
+# Rownames are Platform_SampleID; ColName is the join key to expr_mat columns
 meta <- as.data.frame(dge$samples) |>
-  rownames_to_column("ColName")    # ColName = join key matching expr_mat cols
-
-# ===========================================================================
-# PANEL: Pseudobulk MDS
-# ===========================================================================
+  rownames_to_column("ColName")
 
 # ---------------------------------------------------------------------------
-# Build MDS plot
-# Computes euclidean distances on log-CPM, runs classical MDS, and plots
-# each sample as a filled shape coloured by platform and shaped by condition.
+# Pseudobulk MDS (classical MDS on Euclidean distance of log-CPM)
 # ---------------------------------------------------------------------------
 build_pseudobulk_mds <- function(dge, meta) {
 
@@ -72,7 +71,6 @@ build_pseudobulk_mds <- function(dge, meta) {
   pct1     <- round(var_ex[1] * 100, 1)
   pct2     <- round(var_ex[2] * 100, 1)
 
-  # Combine MDS coordinates with sample metadata
   mds_df <- as.data.frame(mds_res$points) |>
     setNames(c("Dim1", "Dim2")) |>
     rownames_to_column("ColName") |>
@@ -81,22 +79,37 @@ build_pseudobulk_mds <- function(dge, meta) {
 
   ggplot(mds_df, aes(x = Dim1, y = Dim2)) +
 
+    # Sized for the 53 x 38 mm final panel: points ~1.6 mm across
     geom_point(aes(fill = Platform, shape = Type),
-               size   = 5,
+               size   = 2,
                colour = "black",
-               stroke = 0.5) +
+               stroke = 0.3) +
 
-    geom_label_repel(aes(label = IDnum),
-                     fill              = "white",
-                     colour            = "black",
-                     size              = 2,
-                     box.padding       = unit(0.3, "lines"),
-                     point.padding     = unit(0.2, "lines"),
-                     segment.color     = "grey70",
-                     segment.curvature = 0.2,
-                     segment.ncp       = 5,
-                     segment.angle     = 45,
-                     max.overlaps      = Inf) +
+    # Unboxed labels pushed clear of their points on curved leader lines;
+    # point.padding keeps each label off its own point, weak force_pull lets
+    # labels move out of the tight per-platform clusters
+    geom_text_repel(aes(label = IDnum),
+                    colour             = "black",
+                    size               = 5 / .pt,
+                    point.size         = 2,   # matches geom_point size
+                    box.padding        = unit(0.4, "lines"),
+                    point.padding      = unit(0.25, "lines"),
+                    min.segment.length = 0,
+                    segment.colour     = "grey50",
+                    segment.size       = 0.2,
+                    segment.curvature  = -0.2,
+                    segment.ncp        = 3,
+                    segment.angle      = 20,
+                    force              = 3,
+                    force_pull         = 0.5,
+                    max.overlaps       = Inf,
+                    max.iter           = 1e5,
+                    seed               = 123) +
+
+    # Extra room around the point cloud so labels can spread outwards (more on
+    # the right, where the Xenium cluster sits against the panel edge)
+    scale_x_continuous(expand = expansion(mult = c(0.15, 0.3))) +
+    scale_y_continuous(expand = expansion(mult = 0.15)) +
 
     scale_fill_platform(name = "Platform") +
 
@@ -107,7 +120,6 @@ build_pseudobulk_mds <- function(dge, meta) {
                  CTRL = 22)   # filled square
     ) +
 
-    # Strip label showing the gene count
     facet_grid(~ strip_label) +
 
     labs(
@@ -118,33 +130,34 @@ build_pseudobulk_mds <- function(dge, meta) {
     theme_sb() +
     theme(
       legend.position   = "right",
-      legend.key.size   = unit(3, "mm"),
-      legend.key.width  = unit(3, "mm"),
-      legend.key.height = unit(3, "mm"),
-      legend.title      = element_text(size = 8),
-      legend.text       = element_text(size = 7),
+      legend.key.size   = unit(2.5, "mm"),
+      legend.key.width  = unit(2.5, "mm"),
+      legend.key.height = unit(2.5, "mm"),
+      # Legend text inherits theme_sb() sizes (6 pt) to fit the 53 mm width
       legend.spacing.y  = unit(0.5, "mm"),
       legend.spacing.x  = unit(0.5, "mm"),
-      legend.margin     = margin(2, 2, 2, 2),
+      legend.margin     = margin(0, 0, 0, 0),
+      legend.box.spacing = unit(1, "mm"),
       panel.background  = element_blank(),
       panel.border      = element_rect(colour = "black", fill = NA),
       axis.line         = element_line(colour = "black"),
       strip.background  = element_rect(colour = "black", fill = "white"),
-      strip.text        = element_text(face = "italic"),
+      strip.text        = element_text(size = 6, face = "italic",
+                                       margin = margin(1.5, 0, 1.5, 0, "pt")),
       plot.background   = element_blank(),
       panel.spacing     = unit(2, "mm")
     ) +
 
     guides(
       fill = guide_legend(
-        override.aes = list(shape = 21, colour = "black", size = 4),
-        keywidth     = unit(3, "mm"),
-        keyheight    = unit(3, "mm")
+        override.aes = list(shape = 21, colour = "black", size = 2),
+        keywidth     = unit(2.5, "mm"),
+        keyheight    = unit(2.5, "mm")
       ),
       shape = guide_legend(
-        override.aes = list(fill = "white", colour = "black", size = 4),
-        keywidth     = unit(3, "mm"),
-        keyheight    = unit(3, "mm")
+        override.aes = list(fill = "white", colour = "black", size = 2),
+        keywidth     = unit(2.5, "mm"),
+        keyheight    = unit(2.5, "mm")
       )
     )
 }
@@ -155,29 +168,65 @@ p_mds <- build_pseudobulk_mds(dge, meta)
 ggsave(
   filename = file.path(opt$out_dir, "pseudobulk_mds.pdf"),
   plot     = p_mds,
-  width    = dims$half_w * 1.3,
-  height   = dims$half_w,
+  width    = 53,
+  height   = 38,
   units    = "mm",
   device   = cairo_pdf,
   bg       = "white"
 )
 message("Saved: pseudobulk_mds.pdf")
 
-# ===========================================================================
-# PANELS: Average expression scatter plots (one per platform pair)
-# ===========================================================================
+# ---------------------------------------------------------------------------
+# Variance explained (Platform / Group / Residual)
+# ---------------------------------------------------------------------------
+build_variance_explained <- function(var_df) {
+  ggplot(var_df, aes(x = Factor, y = pct_var)) +
+    geom_col(fill = "grey60", width = 0.7) +
+    geom_text(aes(label = sprintf("%.1f", pct_var)),
+              vjust = -0.4, size = 6 / .pt) +
+    scale_y_continuous(limits = c(0, 100), breaks = seq(0, 100, 25),
+                       expand = expansion(mult = c(0, 0))) +
+    # No x title (factor names are self-explanatory) and a shortened y title:
+    # "Variance explained (%)" at 7 pt (~27 mm) is longer than the 25 mm panel
+    labs(x = NULL, y = "Variance (%)") +
+    theme_sb() +
+    theme(
+      axis.text.x      = element_text(angle = 45, hjust = 1),
+      axis.line        = element_line(colour = "black"),
+      panel.border     = element_blank(),
+      panel.background = element_blank(),
+      plot.background  = element_blank()
+    ) +
+    coord_cartesian(clip = "off")
+}
+
+message("Building variance-explained panel...")
+# PERMANOVA R2 (%) from variance_partition.R: adonis2 on the Euclidean
+# distance of the MDS log-CPM matrix, sequential SS (Platform then Group)
+var_df <- readRDS(var_part_path)
+p_var  <- build_variance_explained(var_df)
+
+ggsave(
+  filename = file.path(opt$out_dir, "variance_explained.pdf"),
+  plot     = p_var,
+  width    = 28,
+  height   = 25,
+  units    = "mm",
+  device   = cairo_pdf,
+  bg       = "white"
+)
+message("Saved: variance_explained.pdf")
 
 # ---------------------------------------------------------------------------
-# Compute log10(CPM+1) expression matrix and global axis limits once,
-# so all three scatter panels use the same scale for fair comparison.
+# Average expression scatter plots (one per platform pair)
 # ---------------------------------------------------------------------------
+# Global axis limits so all three panels share one scale
 message("Computing expression matrix and global axis limits...")
 
 cpm_mat  <- cpm(dge, log = FALSE)
 expr_mat <- log10(cpm_mat + 1)
 expr_lab <- "log10(CPM+1)"
 
-# Derive per-sample platform membership for pivoting
 avg_all <- as.data.frame(expr_mat) |>
   rownames_to_column("Gene") |>
   pivot_longer(-Gene, names_to = "ColName", values_to = "Expr") |>
@@ -186,18 +235,14 @@ avg_all <- as.data.frame(expr_mat) |>
   summarise(meanExpr = mean(Expr), .groups = "drop") |>
   pivot_wider(names_from = Platform, values_from = meanExpr)
 
-# Global min/max across all platform-average columns
 platform_cols <- setdiff(colnames(avg_all), "Gene")
 axis_limits <- c(
   min(as.matrix(avg_all[, platform_cols]), na.rm = TRUE),
   max(as.matrix(avg_all[, platform_cols]), na.rm = TRUE)
 )
 
-# ---------------------------------------------------------------------------
-# Build one scatter panel for a pair of platforms.
-# Points are per-gene average log10(CPM+1); density contours show the
-# joint distribution; the 5 most divergent genes are labelled.
-# ---------------------------------------------------------------------------
+# Per-gene mean log10(CPM+1) for one platform pair; density contours; the
+# 5 most divergent genes labelled
 build_avgexpr_scatter <- function(dge, meta, plat_x, plat_y,
                                   axis_limits, panel_title = NULL,
                                   prior_count = 2, ncontours = 5) {
@@ -215,7 +260,7 @@ build_avgexpr_scatter <- function(dge, meta, plat_x, plat_y,
     pivot_wider(names_from = Platform, values_from = meanExpr) |>
     rename(meanX = all_of(plat_x), meanY = all_of(plat_y))
 
-  # Annotation position: R value in upper-left
+  # R value in upper-left
   rng   <- diff(axis_limits)
   x_lbl <- axis_limits[1] + 0.03 * rng
   y_lbl <- axis_limits[2] - 0.03 * rng
@@ -223,7 +268,6 @@ build_avgexpr_scatter <- function(dge, meta, plat_x, plat_y,
   Rval <- cor(avg_df$meanX, avg_df$meanY, use = "pairwise.complete.obs")
   Rtxt <- paste0("R = ", round(Rval, 2))
 
-  # Top 5 genes with the largest absolute difference between platforms
   top5 <- avg_df |>
     mutate(diff = abs(meanX - meanY)) |>
     slice_max(diff, n = 5)
@@ -271,9 +315,6 @@ build_avgexpr_scatter <- function(dge, meta, plat_x, plat_y,
   p
 }
 
-# ---------------------------------------------------------------------------
-# Generate and save one panel per platform pair
-# ---------------------------------------------------------------------------
 pairs <- list(
   list(x = "VisiumHD", y = "MERSCOPE",
        file = "avgexpr_scatter_visiumhd_merscope.pdf",
