@@ -1,5 +1,5 @@
 # Purpose: Cross-platform benchmarking metrics and quality checks.
-# Rules:   dataset_summary, scrna_correlation, qc_metrics, qc_metrics_roi, moransi,
+# Rules:   dataset_summary, scrna_correlation, qc_metrics, qc_metrics_roi, qc_spatial, moransi,
 #          qc_backgrounds, probe_rank, gene_comparison, variance_partition,
 #          segmentation_quality
 #
@@ -7,6 +7,7 @@
 #   dataset_summary      all platforms, all resolutions
 #   scrna_correlation    8µm; FLEX + 3' GEX; needs gene_lists
 #   qc_metrics           all resolutions; needs gene_lists
+#   qc_spatial           8µm; filtered + aligned objects; needs qc_metrics
 #   moransi              one job per platform (MERSCOPE, Xenium); filtered 8µm
 #   qc_backgrounds       MERSCOPE + Xenium, filtered 8µm; needs moransi
 #   probe_rank           MERSCOPE + Xenium, 8µm
@@ -256,6 +257,70 @@ rule qc_metrics_roi:
             --out_dir    {params.out_dir}   \
             --gene_lists {input.gene_lists} \
             --roi_label  {params.roi_label} \
+            > {log} 2>&1
+        """
+
+
+# ---------------------------------------------------------------------------
+# Rule: qc_spatial
+# ---------------------------------------------------------------------------
+# Per-bin coordinates and nCount / nFeature (all genes, 8µm) for the
+# fig2ext_qc_spatial maps; same bins as qc_metrics (checked). Matched animals
+# (config["stalign"]) use aligned coordinates. Map parameters are in
+# config/qc_spatial.yaml.
+
+rule qc_spatial:
+    input:
+        script     = "03_benchmarking/R/qc_spatial.R",
+        helpers    = ["03_benchmarking/R/utils/qc_utils.R", "01_preprocessing/R/roi_utils.R"],
+        config     = "config/config.yaml",
+        qc_spatial = "config/qc_spatial.yaml",
+        filtered   = _binning_inputs(
+            platforms = {
+                "merscope": config["spatial_analysis"]["merscope_samples"],
+                "xenium":   config["spatial_analysis"]["xenium_default_samples"],
+            },
+            resolutions = [8],
+            filtered    = True,
+        ),
+        aligned    = expand(
+            "results/01_preprocessing/{platform}_8um_aligned/{sample}_8um_aligned.rds",
+            zip,
+            platform = ["merscope"] * len(config["stalign"]["matched_samples"]["merscope"])
+                     + ["xenium"]   * len(config["stalign"]["matched_samples"]["xenium"]),
+            sample   = list(config["stalign"]["matched_samples"]["merscope"].values())
+                     + list(config["stalign"]["matched_samples"]["xenium"].values()),
+        ),
+        visium     = expand(
+            config["visiumhd"]["data_dir"] + "/{file}",
+            file = config["visiumhd"]["samples"].values(),
+        ),
+        metadata   = "results/03_benchmarking/qc_metrics/metadata_combined.rds"
+    output:
+        bins = "results/03_benchmarking/qc_spatial/bins_8um.rds"
+    log:
+        "logs/03_benchmarking/qc_spatial.log"
+    benchmark:
+        "benchmarks/03_benchmarking/qc_spatial.txt"
+    envmodules:
+        "R/4.4.1",
+        "geos/3.12.1",
+        "hdf5/1.12.3",
+        "proj/9.4.0",
+        "gdal/3.9.0"
+    resources:
+        mem_mb          = 24000,
+        cpus_per_task   = 2,
+        runtime         = 60,
+        slurm_partition = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose {input.script} \
+            --config     {input.config}     \
+            --qc_spatial {input.qc_spatial} \
+            --metadata   {input.metadata}   \
+            --bin_size   8                  \
+            --out_rds    {output.bins}      \
             > {log} 2>&1
         """
 
