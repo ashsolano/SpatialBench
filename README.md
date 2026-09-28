@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="img/logo.png" width="400" alt="SpatialBench logo">
+  <img src="img/SpatialBenchHighRes_logo.png" width="400" alt="SpatialBenchHighRes logo">
 </p>
 
-<h1 align="center">SpatialBench: Comparative cross-platform benchmarking of high-resolution spatial transcriptomics using matched mouse lymphoid tissue</h1>
+<h1 align="center">SpatialBenchHighRes: Comparative cross-platform benchmarking of high-resolution spatial transcriptomics using matched mouse lymphoid tissue</h1>
 
 ## Contents
 - [Introduction](#introduction)
@@ -15,7 +15,7 @@
 
 ## Introduction
 
-Spatial transcriptomics (ST) has rapidly expanded with the introduction of multiple high-resolution platforms, yet cross-platform benchmarking remains limited and largely focused on technical performance. SpatialBench is a matched multi-platform resource comprising Visium HD, Xenium and MERSCOPE data together with single-cell and single-nucleus references from a malaria-challenged wild-type and B cell-specific *Tbx21* knockout mouse spleen model. We systematically evaluate ST platform performance using technical and biological readouts, providing a biologically defined reference dataset for evaluation of ST technologies, method development, and computational benchmarking.
+Spatial transcriptomics (ST) has rapidly expanded with the introduction of multiple high-resolution platforms, yet cross-platform benchmarking remains limited and largely focused on technical performance. SpatialBenchHighRes is a matched multi-platform resource comprising Visium HD, Xenium and MERSCOPE data together with single-cell and single-nucleus references from a malaria-challenged wild-type and B cell-specific *Tbx21* knockout mouse spleen model. We systematically evaluate ST platform performance using technical and biological readouts, providing a biologically defined reference dataset for evaluation of ST technologies, method development, and computational benchmarking.
 
 <p align="center">
   <img src="img/study_design.png" width="700" alt="Study design">
@@ -24,7 +24,7 @@ Spatial transcriptomics (ST) has rapidly expanded with the introduction of multi
 
 ## Applications
 
-Some example applications of the SpatialBench dataset include:
+Some example applications of the SpatialBenchHighRes dataset include:
 
 - **Cross-platform benchmarking** of segmentation accuracy, sensitivity, and transcript capture across Xenium, MERSCOPE, and Visium HD.
 - **Method development and evaluation** for cell segmentation, cell typing, spatial domain detection, and differential abundance analysis in high-resolution ST data.
@@ -34,7 +34,7 @@ Some example applications of the SpatialBench dataset include:
 
 ## Data Availability
 
-The **SpatialBench dataset** is publicly deposited at BioStudies
+The **SpatialBenchHighRes dataset** is publicly deposited at BioStudies
 ([S-BSST2361](https://ftp.ebi.ac.uk/pub/databases/biostudies/S-BSST/361/S-BSST2361/)).
 
 
@@ -89,7 +89,7 @@ The following analysis workflows are available in this repository. Each folder c
 
 ## Citation
 
-If you use the SpatialBench dataset or workflows, please cite:
+If you use the SpatialBenchHighRes dataset or workflows, please cite:
 
 Ashleigh N. Solano, Raymond K. H. Yip, Changqing Wang, Daniela Amann-Zalcenstein,
 Pradeep Rajasekhar, Ishrat Zaman, Allan Motyer, Marek Cmero, Yang Xu, Yining Pan,
