@@ -2,8 +2,6 @@
 # Kept out of config.yaml so edits here only rerun these two rules.
 
 qc_spatial:
-  # VisiumHD stray bins outside the main section are hidden in the maps
-  # (kept in the table and the violins); eps in µm
   dbscan:
     eps: 80
     minPts: 10
@@ -13,16 +11,11 @@ qc_spatial:
   caps_quantiles: [0.01, 0.99]
   dpi: 600
 
-  # Orientation in the display frame (y down): flip mirrors left-right, then
-  # rotate turns clockwise by 0/90/180/270.
-  # Matched animals (config.yaml stalign) use aligned coordinates, drawn y up
-  # as in fig2_qc.R, i.e. {rotate: 180, flip: true}; matched_rotate adds the
-  # fig2_qc.R display rotation of KO168, applied on all three platforms.
   matched_base: {rotate: 180, flip: true}
   matched_rotate:
     ko168: 90
 
-  # Animals without an alignment, matched by eye to the earlier SFig2 draft
+
   orientation:
     xenium:
       ko166_batch24:   {rotate: 270, flip: false}
