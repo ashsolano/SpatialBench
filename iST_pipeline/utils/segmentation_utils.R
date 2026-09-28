@@ -1,20 +1,8 @@
-# Purpose:  Utility functions for loading cell-segmented spatial transcriptomics data
-#           into Seurat objects. Covers Xenium (myReadXenium, myLoadXenium),
-#           MERSCOPE (myReadVizgen, myLoadVizgen), and Proseg (myLoadProseg).
-#           Used for default vendor, Cellpose, and Proseg segmentation methods.
-# Inputs:   Xenium: output directory containing cell_feature_matrix/, cells.csv.gz,
-#                   cell_boundaries.csv.gz, and transcripts.parquet
-#           MERSCOPE: Vizgen output directory (cell_by_gene.csv, cell_metadata.csv,
-#                     detected_transcripts.csv, and either cell_boundaries/ HDF5 files
-#                     or cell_boundaries.parquet with WKB-encoded polygon geometry)
-#           Proseg: output directory (expected-counts.csv.gz, cell-metadata.csv.gz,
-#                   transcript-metadata.csv.gz, cell-polygons.geojson.gz)
-# Outputs:  Named list of data frames / matrices (myReadXenium, myReadVizgen) or
-#           Seurat objects with spatial coordinates, segmentation boundaries, and
-#           control assays (myLoadXenium, myLoadVizgen, myLoadProseg)
-
+# Purpose:  Loaders for segmented Xenium, MERSCOPE and Proseg output into Seurat objects.
+# Inputs:   Xenium, Vizgen/MERSCOPE or Proseg output directory.
+# Outputs:  Named lists (myRead*) or Seurat objects (myLoad*).
 library(Seurat)
-library(sf)       # WKB polygon decoding for cell_boundaries.parquet
+library(sf)
 
 
 myReadXenium <- function(data.dir, outs = c("matrix", "microns"),
@@ -98,7 +86,6 @@ myLoadXenium <- function(data.dir, fov = "fov", assay = "Xenium") {
 
   xenium.obj <- CreateSeuratObject(counts = data$matrix[["Gene Expression"]], assay = assay)
 
-  # Older Xenium output uses "Blank Codeword"; newer uses "Unassigned Codeword"
   if ("Blank Codeword" %in% names(data$matrix)) {
     xenium.obj[["BlankCodeword"]] <- CreateAssayObject(counts = data$matrix[["Blank Codeword"]])
   } else {
@@ -116,9 +103,6 @@ myLoadXenium <- function(data.dir, fov = "fov", assay = "Xenium") {
 myReadVizgen <- function(data.dir, z = 3L,
                          type     = c("segmentations", "centroids"),
                          mol.type = "microns") {
-  # Adapted from Seurat::ReadVizgen. Reads MERSCOPE/Vizgen output files into a named
-  # list ready for CreateFOV(). The segmentations block is extended to fall back to
-  # cell_boundaries.parquet (WKB format) when no HDF5 cell_boundaries/ directory exists.
 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("Please install 'data.table' for this function")
@@ -130,7 +114,6 @@ myReadVizgen <- function(data.dir, z = 3L,
   if (!z %in% seq.int(0L, 6L)) stop("The z-index must be in the range [0, 6]")
   if (!dir.exists(data.dir))   stop("Cannot find Vizgen directory ", data.dir)
 
-  # Locate input files using the same filename patterns as Seurat::ReadVizgen
   find_file <- function(pattern) {
     hits <- list.files(data.dir, pattern = pattern, full.names = TRUE, recursive = FALSE)
     if (length(hits) == 0L) return(NA_character_)
@@ -142,14 +125,12 @@ myReadVizgen <- function(data.dir, z = 3L,
   h5dir  <- file.path(data.dir, "cell_boundaries")
   zidx   <- paste0("zIndex_", z)
 
-  # Preload spatial metadata (shared by centroids, segmentations, and boxes)
   if (is.na(f_sp)) stop("Cannot find cell_metadata CSV in ", data.dir)
   message("Preloading cell spatial coordinates")
   sp <- data.table::fread(f_sp, sep = ",", data.table = FALSE, verbose = FALSE)
   rownames(sp) <- as.character(sp[[1]])
   sp <- sp[, -1, drop = FALSE]
 
-  # Check which segmentation source is available: HDF5 directory or parquet fallback
   parquet_file <- file.path(data.dir, "cell_boundaries.parquet")
   use_hdf5     <- hdf5 && dir.exists(h5dir)
   use_parquet  <- !use_hdf5 && file.exists(parquet_file)
@@ -162,7 +143,6 @@ myReadVizgen <- function(data.dir, z = 3L,
     type <- setdiff(type, "segmentations")
   }
 
-  # Preload molecule coordinates if needed
   if (length(mol.type) > 0L && !is.na(f_mols)) {
     message("Preloading molecule coordinates")
     mx <- data.table::fread(f_mols, sep = ",", data.table = FALSE, verbose = FALSE)
@@ -171,13 +151,10 @@ myReadVizgen <- function(data.dir, z = 3L,
 
   outs <- list()
 
-  # --- Counts matrix (genes x cells) ---
+  # ---- Counts matrix ----
   if (!is.na(f_tx)) {
     message("Reading counts matrix")
-    # Force the cell ID column to character at read time. 18-digit Vizgen cell IDs
-    # exceed double precision (2^53); if fread reads them as double (no bit64) or
-    # CreateSeuratObject later coerces integer64, IDs silently lose precision and
-    # stop matching the IDs in cell_boundaries.parquet.
+    # Read cell IDs as character: 18-digit IDs exceed double precision
     tx <- data.table::fread(f_tx, sep = ",", data.table = FALSE, verbose = FALSE,
                             colClasses = list(character = 1))
     rownames(tx) <- tx[[1]]
@@ -189,7 +166,7 @@ myReadVizgen <- function(data.dir, z = 3L,
     outs[["transcripts"]] <- tx
   }
 
-  # --- Spatial coordinate types ---
+  # ---- Spatial coordinate types ----
   for (otype in type) {
     outs[[otype]] <- switch(otype,
 
@@ -201,7 +178,6 @@ myReadVizgen <- function(data.dir, z = 3L,
 
       segmentations = {
         if (use_hdf5) {
-          # Read polygon vertices from per-FOV HDF5 files
           message("Creating polygon coordinates from HDF5")
           pg <- lapply(unique(sp$fov), function(f) {
             fname <- file.path(h5dir, paste0("feature_data_", f, ".hdf5"))
@@ -230,11 +206,8 @@ myReadVizgen <- function(data.dir, z = 3L,
           }
           pg
         } else {
-          # Parquet fallback: polygon geometry stored as WKB blobs
           message("Creating polygon coordinates from cell_boundaries.parquet")
-          # Extract EntityID as character directly from the arrow column BEFORE
-          # as.data.frame(); arrow converts int64 to R double during that step,
-          # which silently corrupts 18-digit IDs (beyond 2^53 precision)
+          # Take EntityID as character before as.data.frame(), which turns int64 into double
           bnd_arrow       <- arrow::read_parquet(parquet_file)
           entity_ids_char <- as.character(bnd_arrow$EntityID)
           boundaries      <- as.data.frame(bnd_arrow)
@@ -242,7 +215,6 @@ myReadVizgen <- function(data.dir, z = 3L,
           boundaries <- boundaries[boundaries$Type == "cell" & boundaries$ZIndex == z, ]
           geom       <- sf::st_as_sfc(boundaries$Geometry, crs = NA)
           coords_mat <- as.data.frame(sf::st_coordinates(geom))
-          # L2 is the 1-based feature index: maps each vertex row back to its EntityID
           entity_ids <- boundaries$EntityID[coords_mat$L2]
           data.frame(x    = coords_mat$X,
                      y    = coords_mat$Y,
@@ -252,7 +224,6 @@ myReadVizgen <- function(data.dir, z = 3L,
       },
 
       boxes = {
-        # Bounding-box fallback (min_x, max_x, min_y, max_y from cell_metadata.csv)
         message("Creating bounding box coordinates")
         bx <- lapply(rownames(sp), function(cell) {
           row <- sp[cell, , drop = FALSE]
@@ -269,7 +240,7 @@ myReadVizgen <- function(data.dir, z = 3L,
     )
   }
 
-  # --- Molecule coordinates ---
+  # ---- Molecule coordinates ----
   if (length(mol.type) > 0L && !is.na(f_mols)) {
     for (mtype in mol.type) {
       outs[[mtype]] <- switch(mtype,
@@ -292,10 +263,6 @@ myReadVizgen <- function(data.dir, z = 3L,
 
 myLoadVizgen <- function(data.dir, fov = "fov", assay = "Vizgen",
                          mol.type = "microns", z = 3L) {
-  # Loads a MERSCOPE sample into a Seurat object with spatial coordinates and a
-  # Blanks assay for Blank- negative control genes. Uses centroids only — sufficient
-  # for BANKSY neighbourhood extraction and avoids ZIndex mismatches in
-  # cell_boundaries.parquet across different segmentation methods.
 
   data <- myReadVizgen(
     data.dir = data.dir, z = z,
@@ -303,10 +270,8 @@ myLoadVizgen <- function(data.dir, fov = "fov", assay = "Vizgen",
     mol.type = mol.type
   )
 
-  # Create Seurat object from the full counts matrix (Blank- genes included at this stage)
   obj <- CreateSeuratObject(counts = data[["transcripts"]], assay = assay)
 
-  # Build spatial FOV from centroids
   message("Building FOV from centroids")
   cents  <- CreateCentroids(data[["centroids"]])
   coords <- CreateFOV(
@@ -318,7 +283,6 @@ myLoadVizgen <- function(data.dir, fov = "fov", assay = "Vizgen",
   coords <- subset(coords,
                    cells = intersect(Cells(coords[["centroids"]]), Cells(obj)))
 
-  # Separate Blank- negative control genes into a dedicated assay
   counts      <- GetAssayData(obj, assay = assay, slot = "counts")
   blank_genes <- grep("^Blank-", rownames(counts), value = TRUE)
   if (length(blank_genes) > 0) {
@@ -331,7 +295,6 @@ myLoadVizgen <- function(data.dir, fov = "fov", assay = "Vizgen",
     )
   }
 
-  # Seurat requires valid R names for FOV slots (no underscores or hyphens)
   fov      <- gsub("[_-]", ".", fov)
   obj[[fov]] <- coords
 
@@ -340,16 +303,9 @@ myLoadVizgen <- function(data.dir, fov = "fov", assay = "Vizgen",
 
 
 myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
-  # Loads a Proseg-segmented sample (Xenium or MERSCOPE) into a Seurat object.
-  # Polygon boundaries are read from cell-polygons.geojson.gz; MULTIPOLYGON cells are
-  # resolved by keeping the polygon with the most vertices. Blank genes are moved to a
-  # dedicated Blanks assay for consistency with myLoadXenium and myLoadVizgen.
-  # Adapted from ProsegToSeurat (proseg2seurat.r) by Ji Zhang, with parallelism replaced
-  # by base-R lapply and sf-based polygon extraction.
 
   assay <- match.arg(assay)
 
-  # Helper: locate csv.gz or parquet fallback for a given Proseg output basename
   find_proseg_file <- function(basename) {
     csv_path     <- file.path(data.dir, paste0(basename, ".csv.gz"))
     parquet_path <- file.path(data.dir, paste0(basename, ".parquet"))
@@ -370,12 +326,7 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
     as.data.frame(arrow::read_parquet(f$path))
   }
 
-  # 1. Expected/raw counts: rows = cells, columns = genes.
-  # Proseg 3.1.1 renamed this output to counts.csv.gz and switched its content to
-  # gzipped MatrixMarket format (proseg --output-counts docs: "cell-by-gene count
-  # matrix in gzipped matrix market format"), despite the .csv.gz extension. Detect
-  # the actual format by content, not filename/extension, and fall back to the
-  # original CSV/parquet parsing for older Proseg outputs.
+  # Proseg >= 3.1.1 counts.csv.gz is MatrixMarket despite the extension
   message("Loading expected counts")
   counts_file <- find_proseg_file("expected-counts")
   if (is.null(counts_file)) counts_file <- find_proseg_file("counts")
@@ -395,11 +346,7 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
     counts_df <- Matrix::readMM(gzfile(counts_file$path))
     mtx_cell_metadata <- read_proseg_file("cell-metadata")
     mtx_gene_metadata <- read_proseg_file("gene-metadata")
-    # Cell IDs are prefixed with a non-numeric string ("cell_") before use as
-    # row/col names. Proseg's cell IDs are a plain 0-indexed integer sequence,
-    # which was found to trigger data.frame row-name corruption (an NA row
-    # name silently introduced) somewhere in CreateSeuratObject's meta.data
-    # merge; prefixing sidesteps it regardless of the exact internal cause.
+    # "cell_" prefix: plain integer cell IDs corrupt meta.data row names
     rownames(counts_df) <- paste0("cell_", mtx_cell_metadata$cell)
     colnames(counts_df) <- as.character(mtx_gene_metadata$gene)
   } else if (counts_file$fmt == "csv") {
@@ -408,11 +355,9 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
     counts_df <- as.data.frame(arrow::read_parquet(counts_file$path))
   }
 
-  # 2. Cell metadata: includes cell, centroid_x, centroid_y
   message("Loading cell metadata")
   cell_metadata <- read_proseg_file("cell-metadata")
 
-  # 3. Transcript metadata (optional): provides molecule coordinates
   message("Loading transcript metadata")
   tx_meta   <- read_proseg_file("transcript-metadata", required = FALSE)
   molecules <- NULL
@@ -424,23 +369,16 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
     message("Transcript metadata not found; Seurat object will have no molecules slot")
   }
 
-  # 4. Build counts matrix (genes x cells) and create Seurat object
   message("Creating Seurat object")
   counts_matrix <- Matrix::Matrix(t(as.matrix(counts_df)), sparse = TRUE)
-  # See note above: prefix cell IDs so meta.data's row names are never a plain
-  # 0-indexed integer sequence, which was found to trigger row-name corruption.
   rownames(cell_metadata) <- paste0("cell_", cell_metadata$cell)
 
   obj           <- CreateSeuratObject(counts = counts_matrix, meta.data = cell_metadata,
                                       assay = assay)
-  # Rename cells from integer row indices to actual cell IDs from metadata
   colnames(obj) <- obj$cell
-  # orig.ident otherwise ends up as "cell" for every cell: CreateSeuratObject()
-  # derives idents by splitting colnames on "_", and colnames were "cell_<id>"
-  # at that point (see "cell_" prefix note above).
+  # Needed: idents were split from "cell_<id>" colnames, giving "cell"
   obj$orig.ident <- fov
 
-  # 5. Load cell polygon boundaries from compressed GeoJSON
   message("Loading cell polygons")
   polygons_path <- file.path(data.dir, "cell-polygons.geojson.gz")
   if (!file.exists(polygons_path)) {
@@ -451,17 +389,14 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
   close(con)
   polygons_sf <- geojsonsf::geojson_sf(geo_text)
 
-  # Cast to POLYGON (splits any MULTIPOLYGON into individual polygon rows)
   polygons_sf <- sf::st_cast(polygons_sf, "POLYGON", warn = FALSE)
 
-  # For cells with multiple polygons (split from MULTIPOLYGON), keep the largest
   cell_ids <- as.character(polygons_sf$cell)
   n_pts    <- sapply(polygons_sf$geometry, function(g) nrow(g[[1]]))
   keep_idx <- tapply(seq_len(nrow(polygons_sf)), cell_ids,
                      function(idx) idx[which.max(n_pts[idx])])
   polygons_sf <- polygons_sf[unlist(keep_idx), ]
 
-  # Extract x/y vertex coordinates: L1 = ring (1 = exterior), L2 = feature index
   coords_mat <- as.data.frame(sf::st_coordinates(polygons_sf$geometry))
   segs_df    <- data.frame(
     x    = coords_mat$X,
@@ -471,7 +406,6 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
   )
   message("Cell polygons loaded")
 
-  # 6. Build FOV with centroids and segmentation polygons
   centroids_df <- data.frame(
     x    = obj$centroid_x,
     y    = obj$centroid_y,
@@ -481,7 +415,6 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
   cents <- CreateCentroids(centroids_df)
   segs  <- CreateSegmentation(segs_df)
 
-  # Retain only cells present in both counts and segmentation
   shared_cells <- intersect(Cells(obj), Cells(segs))
   cents <- subset(cents, cells = shared_cells)
   segs  <- subset(segs,  cells = shared_cells)
@@ -494,7 +427,6 @@ myLoadProseg <- function(data.dir, fov = "fov", assay = c("Vizgen", "Xenium")) {
     assay     = assay
   )
 
-  # 7. Separate Blank genes into a dedicated assay (consistent with other platforms)
   counts_full <- GetAssayData(obj, assay = assay, slot = "counts")
   blank_genes <- grep("^Blank", rownames(counts_full), value = TRUE)
   if (length(blank_genes) > 0) {

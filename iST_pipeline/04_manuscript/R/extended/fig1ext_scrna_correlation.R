@@ -1,22 +1,5 @@
-# Purpose:  Extended figure for Figure 1: pseudobulk logCPM of each spatial
-#           platform (y) vs each single-cell reference (x) as one 2 x 6 grid
-#           (rows 10X FLEX / 10X 3' GEX; columns Visium HD, MERSCOPE, Xenium on
-#           pairwise gene sets, then on the 90-gene common set).
-# Supports: fig1.R — spatial vs single-cell agreement holds for a second
-#           reference (3' GEX) and on the gene set common to all three platforms.
-# Legend notes:
-#           - Matched WT animals (709, 713); axis titles omit "WT". 3' GEX WT708
-#             and MERSCOPE/Xenium WT710 excluded.
-#           - logCPM = log10(CPM + 1). Value = mean over animals of per-animal
-#             pseudobulk log10(CPM + 1); library size = the pairwise shared genes.
-#             R = Pearson on gene-level means; n = genes.
-#           - Density contours use genes with logCPM > 0.1 in both datasets; all
-#             genes are shown as points and included in R and n.
-#           - Common set = Visium HD ∩ MERSCOPE ∩ Xenium panels (90 genes); values
-#             subset from the pairwise sets, not renormalised.
-#           - Axes 0–6 as in Fig 1c. MERSCOPE/Xenium values ~1 log10 unit higher
-#             than in the earlier draft. Visium HD vs 3' GEX n = 19059 (earlier
-#             draft 19053).
+# Purpose:  Fig 1 extended: spatial vs single-cell pseudobulk logCPM, two references x two gene sets.
+# Supports: fig1.R — spatial vs single-cell agreement holds for 3' GEX and the common gene set.
 # Inputs:   results/03_benchmarking/scrna_correlation/correlation_by_reference.rds
 # Outputs:  extended_figures/fig1ext_scrna_correlation/scrna_correlation_grid.pdf
 
@@ -33,9 +16,7 @@ source("04_manuscript/R/utils/theme.R")
 source("04_manuscript/R/utils/palettes.R")
 source("04_manuscript/R/utils/plot_helpers.R")
 
-# ---------------------------------------------------------------------------
-# CLI arguments
-# ---------------------------------------------------------------------------
+# ---- CLI arguments ----
 option_list <- list(
   make_option(c("--in_file"), type = "character",
               default = "results/03_benchmarking/scrna_correlation/correlation_by_reference.rds",
@@ -49,9 +30,7 @@ opt <- parse_args(OptionParser(option_list = option_list))
 if (!file.exists(opt$in_file)) stop("--in_file not found: ", opt$in_file)
 dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 
-# ---------------------------------------------------------------------------
-# Figure constants
-# ---------------------------------------------------------------------------
+# ---- Figure constants ----
 reference_labels <- c(FLEX = "10X FLEX",               GEX = "10X 3' GEX")
 axis_ref_labels  <- c(FLEX = "10X FLEX",               GEX = "10X 3'GEX")
 row_strip_labels <- c(FLEX = "snRNA-seq\n10X FLEX",    GEX = "scRNA-seq\n10X 3' GEX")
@@ -61,28 +40,25 @@ gene_set_levels  <- c("pairwise", "common")
 axis_limits <- c(0, 6)
 axis_breaks <- c(0, 2, 4, 6)
 page_w_mm   <- dims$full_w
-gap_w_mm    <- 3                # between the two column groups
+gap_w_mm    <- 3
 strip_w_mm  <- 5.5
 header_h_mm <- 4
 bar_h_mm    <- 5
 bar_size_mm <- c(w = 6, h = 1)
 
-# Text sizes (pt): the reference's sizes scaled from 210 to 170 mm wide
 txt <- list(
-  base       = 6,    # tick labels = base - 1
+  base       = 6,
   axis_title = 5.5,
-  annot      = 5,    # R / n
-  label      = 6.5,  # headers and row strips
+  annot      = 5,
+  label      = 6.5,
   bar_title  = 5,
   bar_label  = 4.5
 )
 contour_lw <- 0.1
-density_cutoff <- 0.1   # contours use genes with log10(CPM + 1) > cutoff in both datasets
-point_alpha    <- 0.25  # grey points (Fig 1c: 0.35)
+density_cutoff <- 0.1
+point_alpha    <- 0.25
 
-# ---------------------------------------------------------------------------
-# Load and check data
-# ---------------------------------------------------------------------------
+# ---- Load and check data ----
 corr_by_ref  <- readRDS(opt$in_file)
 corr_data    <- corr_by_ref$data
 corr_summary <- corr_by_ref$summary
@@ -110,7 +86,6 @@ if (any(n_common != length(common_genes))) {
 }
 message("Common gene set: ", length(common_genes), " genes")
 
-# Fail rather than silently crop genes outside the axes
 value_range <- range(c(corr_data$scRNA, corr_data$ST), na.rm = TRUE)
 message("Expression range: ", paste(round(value_range, 3), collapse = " – "))
 if (value_range[1] < axis_limits[1] || value_range[2] > axis_limits[2]) {
@@ -121,9 +96,7 @@ if (value_range[1] < axis_limits[1] || value_range[2] > axis_limits[2]) {
 message("R and n per panel:")
 print(as.data.frame(dplyr::mutate(corr_summary, r = round(r, 3))))
 
-# ---------------------------------------------------------------------------
-# Density scatter panels
-# ---------------------------------------------------------------------------
+# ---- Density scatter panels ----
 make_panel <- function(ref, gene_set, plat) {
   panel_data <- dplyr::filter(corr_data, reference == ref,
                               gene_set == !!gene_set, platform == plat)
@@ -151,7 +124,7 @@ make_panel <- function(ref, gene_set, plat) {
     theme(axis.title = element_text(size = txt$axis_title))
 }
 
-# Row-major: FLEX then GEX; pairwise then common
+# Order must match the design letters below (row-major)
 panel_grid <- tidyr::expand_grid(reference = names(reference_labels),
                                  gene_set  = gene_set_levels,
                                  platform  = names(platform_labels))
@@ -159,11 +132,7 @@ panels <- purrr::pmap(panel_grid, function(reference, gene_set, platform) {
   make_panel(reference, gene_set, platform)
 })
 
-# ---------------------------------------------------------------------------
-# Column-group headers, row strips and colour bars
-# ---------------------------------------------------------------------------
-# area = "panel" aligns the grob with the panel area of its row / column;
-# box_margin replaces wrap_elements()' default 5.5 pt margin
+# ---- Column-group headers, row strips and colour bars ----
 wrap_grob <- function(grob, area = c("full", "panel"), box_margin = margin(0, 0, 0, 0)) {
   area    <- match.arg(area)
   wrapped <- if (area == "full") wrap_elements(full = grob) else wrap_elements(panel = grob)
@@ -179,8 +148,6 @@ label_box <- function(label, fill, rot = 0) {
   )
 }
 
-# "Low [gradient] High" over "Point density", as in the reference; levels are
-# relative within each panel, so no numbers
 colour_bar <- function(color_low, color_high) {
   bar_w  <- unit(bar_size_mm[["w"]], "mm")
   bar_h  <- unit(bar_size_mm[["h"]], "mm")
@@ -216,11 +183,8 @@ bars <- purrr::map(rep(names(platform_labels), times = length(gene_set_levels)),
             area = "panel")
 })
 
-# ---------------------------------------------------------------------------
-# Layout
-# ---------------------------------------------------------------------------
-# A/B headers; C–H, I–N panel rows; Q/R row strips; S–X colour bars; # empty.
-# Areas are filled in alphabetical order of their letters.
+# ---- Layout ----
+# Areas fill in alphabetical order of their letters
 design <- "
 AAA#BBB#
 CDE#FGHQ
@@ -236,7 +200,7 @@ build_grid <- function(panel_mm) {
     )
 }
 
-# Measured on a cairo device so text metrics match the saved PDF
+# Measure on cairo so text metrics match the saved PDF
 layout_size_mm <- function(p) {
   cairo_pdf(tempfile(fileext = ".pdf"), width = 10, height = 10)
   on.exit(dev.off())
@@ -245,7 +209,6 @@ layout_size_mm <- function(p) {
     height = convertHeight(sum(gt$heights), "mm", valueOnly = TRUE))
 }
 
-# Panel side that makes the page exactly page_w_mm wide
 probe_mm <- 20
 overhead <- layout_size_mm(build_grid(probe_mm))[["width"]] - 6 * probe_mm
 panel_mm <- (page_w_mm - overhead) / 6

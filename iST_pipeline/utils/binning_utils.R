@@ -1,9 +1,6 @@
-# Purpose:  Utility functions for binning spatial transcriptomics data into
-#           fixed-size spatial bins and loading as Seurat objects.
-#           Supports Xenium (10x Genomics) and MERSCOPE (Vizgen) platforms.
-# Inputs:   Raw data directories containing transcripts.parquet (Xenium) or
-#           detected_transcripts.csv (Vizgen)
-# Outputs:  Named list of sparse count matrices (Read*) or a Seurat object (Load*)
+# Purpose:  Bin Xenium and MERSCOPE transcripts into fixed-size spatial bins as Seurat objects.
+# Inputs:   Xenium transcripts.parquet or Vizgen detected_transcripts.csv directories.
+# Outputs:  Named list of sparse count matrices (Read*) or a Seurat object (Load*).
 
 library(Matrix)
 library(dplyr)
@@ -29,7 +26,6 @@ ReadXenium_binned <- function(data.dir, resolution = 8, pixel_size = 1, mols.qv.
       spatial_bin   = paste(binx, biny, sep = "_")
     )
 
-  # Older Xenium data lacks codeword_category; infer it from feature name patterns
   if (!"codeword_category" %in% colnames(transcripts)) {
     message("'codeword_category' missing — inferring from feature_name patterns.")
     transcripts <- transcripts %>%
@@ -43,7 +39,7 @@ ReadXenium_binned <- function(data.dir, resolution = 8, pixel_size = 1, mols.qv.
       )
   }
 
-  # Compute all_bins up front so every category matrix has the same column set
+  # Shared all_bins keeps every category matrix on the same columns
   all_bins <- sort(unique(transcripts$spatial_bin))
 
   binned_data <- transcripts %>%
@@ -63,7 +59,6 @@ ReadXenium_binned <- function(data.dir, resolution = 8, pixel_size = 1, mols.qv.
       as(count_matrix, "dgCMatrix")
     })
 
-  # Rename to Seurat-compatible names; reorder list and names together to keep them in sync
   name_mapping <- c(
     "custom_gene"               = "Gene Expression",
     "negative_control_codeword" = "Negative Control Codeword",
@@ -94,7 +89,6 @@ LoadXenium_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Xe
 
   xenium.obj <- CreateSeuratObject(counts = data[["Gene Expression"]], assay = assay)
 
-  # Older Xenium output uses "Blank Codeword"; newer uses "Unassigned Codeword"
   if ("Blank Codeword" %in% names(data)) {
     xenium.obj[["BlankCodeword"]] <- CreateAssayObject(counts = data[["Blank Codeword"]])
   } else {
@@ -103,7 +97,6 @@ LoadXenium_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Xe
   xenium.obj[["ControlCodeword"]] <- CreateAssayObject(counts = data[["Negative Control Codeword"]])
   xenium.obj[["ControlProbe"]]    <- CreateAssayObject(counts = data[["Negative Control Probe"]])
 
-  # Bin IDs are "binx_biny"; multiply indices back by resolution to get micron coordinates
   bins <- colnames(xenium.obj)
   bin_centroid_df <- data.frame(
     x = as.numeric(sub("_.*", "", bins)) * resolution,
@@ -132,7 +125,6 @@ ReadVizgen_binned <- function(data.dir, resolution = 8, z = "all", filter = NA_c
 
   mx <- data.table::fread(file.path(data.dir, "detected_transcripts.csv"), sep = ",", verbose = FALSE)
 
-  # z = "all" keeps every z-plane; otherwise filter down to the requested plane
   if (!identical(z, "all")) {
     mx <- mx[mx$global_z == z, , drop = FALSE]
   }
@@ -141,7 +133,7 @@ ReadVizgen_binned <- function(data.dir, resolution = 8, z = "all", filter = NA_c
     mx <- mx[!grepl(pattern = filter, x = mx$gene), , drop = FALSE]
   }
 
-  # global_x / global_y are already in micron space for Vizgen data
+  # Vizgen global_x / global_y are already in microns
   microns <- data.frame(
     x             = mx$global_x,
     y             = mx$global_y,
@@ -150,7 +142,6 @@ ReadVizgen_binned <- function(data.dir, resolution = 8, z = "all", filter = NA_c
     stringsAsFactors = FALSE
   )
 
-  # Genes prefixed with "Blank-" are negative controls; separate them from real genes
   transcripts <- microns %>%
     mutate(
       binx          = floor(x / resolution),
@@ -184,19 +175,14 @@ ReadVizgen_binned <- function(data.dir, resolution = 8, z = "all", filter = NA_c
 
 LoadVizgen_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Vizgen", z = "all") {
 
-  # All z-planes are used by default to match the Xenium binning workflow,
-  # which does not filter by z-plane; addresses reviewer concerns about
-  # unmatched z-plane handling between platforms.
   data <- ReadVizgen_binned(data.dir, resolution = resolution, z = z)
 
   vizgen.obj <- CreateSeuratObject(counts = data$binned_matrices[["Gene Expression"]], assay = assay)
 
-  # Add Blanks assay only if Blank- genes were present in the data
   if ("Blanks" %in% names(data$binned_matrices)) {
     vizgen.obj[["Blanks"]] <- CreateAssayObject(counts = data$binned_matrices[["Blanks"]])
   }
 
-  # Bin IDs are "binx_biny"; multiply indices back by resolution to get micron coordinates
   bins <- colnames(vizgen.obj)
   bin_centroid_df <- data.frame(
     x = as.numeric(sub("_.*", "", bins)) * resolution,
@@ -221,8 +207,7 @@ LoadVizgen_binned <- function(data.dir, resolution = 8, fov = "fov", assay = "Vi
 }
 
 
-# Detect the background/tissue nCount boundary from the local minimum between
-# the background and signal peaks of the count distribution.
+# Returns the nCount at the valley between the background and tissue peaks
 find_background_threshold <- function(counts, max_count = 500, min_thresh = 5) {
   counts <- counts[counts > 0 & counts <= max_count]
   if (length(counts) == 0) return(min_thresh)
@@ -236,9 +221,7 @@ find_background_threshold <- function(counts, max_count = 500, min_thresh = 5) {
 }
 
 
-# Post-processing QC: drop background/empty bins and remove spatially isolated
-# bins (e.g. debris, edge artefacts) via DBSCAN. min_cluster_size lets more
-# than one tissue cluster survive, for samples with multiple tissue pieces.
+# Returns obj without background bins and DBSCAN-isolated bins
 filter_binned_seurat <- function(obj, assay = "Vizgen",
                                   min_count = 1,
                                   use_adaptive_threshold = TRUE,
@@ -257,8 +240,6 @@ filter_binned_seurat <- function(obj, assay = "Vizgen",
     row.names = colnames(obj)
   )
 
-  # Adaptive threshold finds the valley between the background and tissue
-  # peaks of the count distribution; otherwise fall back to a fixed min_count
   if (use_adaptive_threshold) {
     min_count <- find_background_threshold(df$nCount)
     message("Adaptive background threshold: nCount >= ", round(min_count, 2))
@@ -270,7 +251,6 @@ filter_binned_seurat <- function(obj, assay = "Vizgen",
   cluster_sizes <- table(cl[cl > 0])
   keep_clusters <- as.integer(names(cluster_sizes)[cluster_sizes >= min_cluster_size])
 
-  # Fall back to the single largest cluster if none meet min_cluster_size
   if (length(keep_clusters) == 0) {
     keep_clusters <- as.integer(names(which.max(cluster_sizes)))
   }
