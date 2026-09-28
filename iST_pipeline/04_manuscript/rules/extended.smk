@@ -1,20 +1,22 @@
 # Rules:   fig1ext_scrna_correlation, fig2ext_background_persample,
-#          fig2ext_probe_rank_persample, fig2ext_qc_violins
+#          fig2ext_probe_rank_persample, fig2ext_qc_violins, fig2ext_qc_spatial
 # Purpose: Extended manuscript figures from pre-computed benchmarking outputs
 #          (plotting only). Extended Data numbers are mapped in CLAUDE.md.
 # Inputs:  results/03_benchmarking/scrna_correlation/correlation_by_reference.rds
 #          results/03_benchmarking/qc_backgrounds/{background_per_sample,moransi_combined}.rds
 #          results/03_benchmarking/probe_rank/{ranked_sample.rds,label_pool_genes.csv}
 #          results/03_benchmarking/qc_metrics/metadata_combined.rds
+#          results/03_benchmarking/qc_spatial/bins_8um.rds, config/qc_spatial.yaml
 # Config keys used (fig2ext rules; fig1ext WT animals are set upstream in
 # scrna_correlation.R from config["scrna"]["wt_ids"]):
 #   config["spatial_analysis"]["merscope_samples"]       — animal columns
 #   config["spatial_analysis"]["xenium_default_samples"] — animal columns
 #   config["qc_backgrounds"]["exclude_samples"]          — expected missing animals
-#   config["gene_comparison"]["animals"]                 — VisiumHD animal IDs (qc_violins)
+#   config["gene_comparison"]["animals"]                 — VisiumHD animal IDs (qc_violins, qc_spatial)
+#   config["stalign"]                                    — matched animals (qc_spatial)
 # Targets (Snakefile): extended_fig1ext_scrna_correlation,
 #   extended_fig2ext_background, extended_fig2ext_probe_rank,
-#   extended_fig2ext_qc_violins, extended_all
+#   extended_fig2ext_qc_violins, extended_fig2ext_qc_spatial, extended_all
 
 # ---------------------------------------------------------------------------
 # Rule: fig1ext_scrna_correlation
@@ -184,5 +186,50 @@ rule fig2ext_qc_violins:
             --metadata {input.metadata} \
             --config   {input.config}   \
             --out_dir  {params.out_dir} \
+            > {log} 2>&1
+        """
+
+
+# ---------------------------------------------------------------------------
+# Rule: fig2ext_qc_spatial
+# ---------------------------------------------------------------------------
+# Supports: fig2_qc.R — per-bin counts/genes are spatially consistent within
+#           and across animals (same bins as fig2ext_qc_violins)
+# Panels (one PDF per platform, 2 rows x one tile per animal; each tile a
+# separate image, also written to tiles/ as PNG):
+#   - rows: counts/bin, genes/bin (all genes, 8 µm)
+
+rule fig2ext_qc_spatial:
+    input:
+        script     = "04_manuscript/R/extended/fig2ext_qc_spatial.R",
+        helpers    = "04_manuscript/R/utils/extended_helpers.R",
+        config     = "config/config.yaml",
+        qc_spatial = "config/qc_spatial.yaml",
+        bins       = "results/03_benchmarking/qc_spatial/bins_8um.rds"
+    output:
+        xenium   = "extended_figures/fig2ext_qc_spatial/qc_spatial_xenium_8um.pdf",
+        merscope = "extended_figures/fig2ext_qc_spatial/qc_spatial_merscope_8um.pdf",
+        visiumhd = "extended_figures/fig2ext_qc_spatial/qc_spatial_visiumhd_8um.pdf",
+        tiles    = directory("extended_figures/fig2ext_qc_spatial/tiles")
+    log:
+        "logs/04_manuscript/extended/fig2ext_qc_spatial.log"
+    benchmark:
+        "benchmarks/04_manuscript/extended/fig2ext_qc_spatial.txt"
+    params:
+        out_dir = "extended_figures/fig2ext_qc_spatial"
+    envmodules:
+        "R/4.4.1"
+    resources:
+        mem_mb          = 48000,
+        cpus_per_task   = 2,
+        runtime         = 30,
+        slurm_partition = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose {input.script} \
+            --bins       {input.bins}       \
+            --config     {input.config}     \
+            --qc_spatial {input.qc_spatial} \
+            --out_dir    {params.out_dir}   \
             > {log} 2>&1
         """
