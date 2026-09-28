@@ -5,6 +5,7 @@
 #           Montage coordinates: aligned MERSCOPE/Xenium centroids are already in
 #           the matched VisiumHD sample's full-res pixel space, so all platforms
 #           are converted to µm with that sample's stalign$microns_per_pixel.
+# Extended figures: extended/fig2ext_qc_violins.R
 # Inputs:   config/config.yaml
 #           VisiumHD objects in config visiumhd$data_dir
 #           results/01_preprocessing/merscope_8um_aligned/{sample}_8um_aligned.rds

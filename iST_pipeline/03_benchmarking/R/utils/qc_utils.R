@@ -3,8 +3,6 @@
 #           (ROI-extracted objects).
 # Inputs:   None (function definitions only)
 # Outputs:  None
-# Author:   Ashleigh Solano
-# Date:     2026-09-26
 
 # Seurat v4/v5 compatible raw counts extraction
 get_counts_mat <- function(so, assay) {
