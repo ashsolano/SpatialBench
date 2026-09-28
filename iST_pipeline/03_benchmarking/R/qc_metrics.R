@@ -1,8 +1,7 @@
-# Purpose:  Compute per-bin QC metadata (nCount, nFeature) for VisiumHD,
-#           MERSCOPE, and Xenium at all configured bin resolutions, for both
-#           the full platform gene set and the three-platform common gene subset.
-#           Also computes per-cell intersect-gene metadata for VisiumHD, FLEX
-#           snRNA-seq, and scRNA-seq (scGEM), used for Figure 2 FLEX comparison.
+# Purpose:  Per-bin QC metadata (nCount, nFeature) for VisiumHD, MERSCOPE and
+#           Xenium at all bin resolutions, for all genes and the three-platform
+#           common subset; plus per-cell intersect-gene QC for VisiumHD, FLEX
+#           snRNA-seq and scRNA-seq (scGEM) for the Fig 2 FLEX comparison.
 # Inputs:   config/config.yaml  (visiumhd, spatial_analysis, bin_resolutions)
 #           results/01_preprocessing/merscope_{res}um_filtered/{sample}_{res}um_filtered.rds
 #           results/01_preprocessing/xenium_{res}um_filtered/{sample}_{res}um_filtered.rds
@@ -10,8 +9,7 @@
 #                z-planes)
 #           results/03_benchmarking/dataset_summary/gene_lists.rds  (common genes)
 #           cfg$scrna$path  (scFlex_seu.rds — FLEX snRNA-seq reference)
-#           --sc_rds        (scGEM_seu.rds  — scRNA-seq; suggest adding to config.yaml
-#                            as scrna$sc_path for consistency)
+#           --sc_rds        (scGEM_seu.rds  — scRNA-seq; config scrna$sc_path)
 # Outputs:  results/03_benchmarking/qc_metrics/metadata_combined.rds
 #               (per-bin rows: Sample, nCount, nFeature, platform, Subset, bin_size)
 #           results/03_benchmarking/qc_metrics/metadata_flex_scrna.rds
@@ -44,7 +42,7 @@ option_list <- list(
               help    = "Path to gene_lists.rds from dataset_summary.R [default: %default]"),
   make_option(c("--sc_rds"),     type = "character",
               default = NULL,
-              help    = "Path to scGEM_seu.rds (10x scRNA-seq). Flag: add as scrna$sc_path in config.yaml")
+              help    = "Path to scGEM_seu.rds (10x scRNA-seq); Snakemake passes config scrna$sc_path")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
 
@@ -60,8 +58,7 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 # order_qc_factors() are shared with qc_metrics_roi.R
 source("03_benchmarking/R/utils/qc_utils.R")  # must be run from the project root
 
-# Compute per-barcode nCount and nFeature restricted to the intersect gene set.
-# Returns a data frame with columns: barcode, nCount_intersect, nFeature_intersect.
+# Per-barcode nCount and nFeature restricted to the intersect gene set
 calc_intersect_qc <- function(so, genes, assay) {
   mat <- get_counts_mat(so, assay)
   g   <- intersect(genes, rownames(mat))
@@ -142,8 +139,7 @@ message("Three-platform common genes: ", length(common_genes))
 # ---------------------------------------------------------------------------
 # Build spatial platform metadata
 # ---------------------------------------------------------------------------
-# For each bin resolution, build metadata for All genes and the common-gene
-# subset ("90") for VisiumHD, MERSCOPE, and Xenium.
+# Subsets: "All" genes and the common-gene subset ("90").
 # VisiumHD assay name encodes the bin size: Spatial.008um, Spatial.016um, etc.
 message("Building spatial platform metadata across bin resolutions...")
 
@@ -179,7 +175,6 @@ for (res in bin_resolutions) {
     xen_objs_r, xen_samps, xen_assay, "Xenium",   "90",  bin_label, common_genes)
 }
 
-# Combine and apply ordered factor levels for consistent plotting
 metadata_combined <- order_qc_factors(dplyr::bind_rows(meta_list))
 
 message("Saving metadata_combined.rds (", nrow(metadata_combined), " rows)...")
@@ -200,14 +195,12 @@ if (!is.null(opt$sc_rds)) {
   message("Loading scRNA-seq: ", opt$sc_rds)
   sc_seu <- readRDS(opt$sc_rds)
 
-  # Intersect gene set across the three data types
   vis_genes  <- rownames(get_counts_mat(visiumhd_objs[[1]], "Spatial.008um"))
   flex_genes <- rownames(get_counts_mat(flex_seu, "RNA"))
   sc_genes   <- rownames(get_counts_mat(sc_seu,   "RNA"))
   genes_intersect <- Reduce(intersect, list(vis_genes, flex_genes, sc_genes))
   message("Intersect genes (VisiumHD × FLEX × scRNA): ", length(genes_intersect))
 
-  # VisiumHD: one row per bin per sample
   meta_vis_flex <- dplyr::bind_rows(
     lapply(names(visiumhd_objs), function(samp) {
       calc_intersect_qc(visiumhd_objs[[samp]], genes_intersect, "Spatial.008um") %>%

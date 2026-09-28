@@ -1,22 +1,29 @@
-# Purpose:  Compute per-probe rank tables and background overlap gene lists for
-#           MERSCOPE and Xenium 8µm binning objects. Identifies target probes
-#           whose mean expression falls below the 95th percentile of blank/
-#           background probes (the "overlap" set), and builds the label pool
-#           used for S-curve annotations in figure generation.
-#           Adapted from probe_rank_platform_v2.R.
-# Inputs:   config/config.yaml  (spatial_analysis, output_dir)
-#           results/01_preprocessing/merscope_8um/{sample}_8um.rds
-#           results/01_preprocessing/xenium_8um/{sample}_8um.rds
+# Purpose:  Per-probe rank tables for MERSCOPE and Xenium 8µm bins, the target
+#           probes at or below the 95th percentile of background probes (the
+#           "overlap" set), and the S-curve label pool for fig2_background.R.
+#           Background sets match qc_backgrounds.R / moransi.R: MERSCOPE "Blanks"
+#           assay (89 blank probes); Xenium "BlankCodeword" assay (380
+#           Unassigned codewords only; control probes/codewords excluded).
+# Inputs:   config/config.yaml  (spatial_analysis, qc_backgrounds$exclude_samples,
+#                                output_dir)
+#           results/01_preprocessing/merscope_8um_filtered/{sample}_8um_filtered.rds
+#           results/01_preprocessing/xenium_8um_filtered/{sample}_8um_filtered.rds
 # Outputs:  results/03_benchmarking/probe_rank/ranked_plat.rds
 #               (per-probe table: platform, feature, Type, mean_count, rank,
-#                rank_frac, bg95, y, is_overlap)
+#                rank_frac, bg95, y, is_overlap; pooled: mean_count is the
+#                mean over samples of per-sample totals)
+#           results/03_benchmarking/probe_rank/ranked_sample.rds
+#               (per-sample probe table: platform, feature, count, Sample,
+#                Type, rank, rank_frac, bg95, y, is_overlap; count is the
+#                per-sample total, bg95 the 95th percentile of that sample's
+#                background probes, is_overlap = target with count <= bg95)
 #           results/03_benchmarking/probe_rank/probe_overlap_targets.csv
 #               (target probes falling within the bg95 threshold)
 #           results/03_benchmarking/probe_rank/overlap_genes_merscope.txt
 #           results/03_benchmarking/probe_rank/overlap_genes_xenium.txt
 #           results/03_benchmarking/probe_rank/label_pool_genes.csv
-#               (union of top-N and tail-N MERSCOPE overlap probes, used for
-#                S-curve text annotations in fig2_background.R)
+#               (all MERSCOPE overlap probes, used for S-curve text
+#                annotations in fig2_background.R)
 
 suppressPackageStartupMessages({
   library(Seurat)
@@ -37,13 +44,7 @@ option_list <- list(
               help    = "Path to config.yaml [default: %default]"),
   make_option(c("--out_dir"), type = "character",
               default = "results/03_benchmarking/probe_rank",
-              help    = "Output directory [default: %default]"),
-  make_option(c("--label_top_n"), type = "integer",
-              default = 8L,
-              help    = "Top N overlap probes by mean count for label pool [default: %default]"),
-  make_option(c("--label_tail_n"), type = "integer",
-              default = 6L,
-              help    = "Right-tail N overlap probes by rank percentile for label pool [default: %default]")
+              help    = "Output directory [default: %default]")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
 
@@ -53,14 +54,23 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 # ---------------------------------------------------------------------------
 # Load 8um binning objects
 # ---------------------------------------------------------------------------
-merscope_samples <- cfg$spatial_analysis$merscope_samples
-xenium_samples   <- cfg$spatial_analysis$xenium_default_samples
+# Samples without background probe signal are excluded via
+# config["qc_backgrounds"]["exclude_samples"] (same exclusions as
+# qc_backgrounds.R / moransi.R), so target and background means are computed
+# over the same samples
+bg_cfg           <- cfg$qc_backgrounds
+merscope_samples <- setdiff(cfg$spatial_analysis$merscope_samples,      unlist(bg_cfg$exclude_samples$merscope))
+xenium_samples   <- setdiff(cfg$spatial_analysis$xenium_default_samples, unlist(bg_cfg$exclude_samples$xenium))
+walk(c("merscope", "xenium"), function(p) {
+  excl <- unlist(bg_cfg$exclude_samples[[p]])
+  if (length(excl) > 0) message("Excluding ", p, " samples (no background signal): ", paste(excl, collapse = ", "))
+})
 
 message("Loading MERSCOPE 8um objects...")
-mer_dir      <- file.path(cfg$output_dir, "01_preprocessing", "merscope_8um")
+mer_dir      <- file.path(cfg$output_dir, "01_preprocessing", "merscope_8um_filtered")
 merscope_8um <- setNames(
   lapply(merscope_samples, function(samp) {
-    path <- file.path(mer_dir, paste0(samp, "_8um.rds"))
+    path <- file.path(mer_dir, paste0(samp, "_8um_filtered.rds"))
     message("  ", samp, ": ", path)
     readRDS(path)
   }),
@@ -68,10 +78,10 @@ merscope_8um <- setNames(
 )
 
 message("Loading Xenium 8um objects...")
-xen_dir    <- file.path(cfg$output_dir, "01_preprocessing", "xenium_8um")
+xen_dir    <- file.path(cfg$output_dir, "01_preprocessing", "xenium_8um_filtered")
 xenium_8um <- setNames(
   lapply(xenium_samples, function(samp) {
-    path <- file.path(xen_dir, paste0(samp, "_8um.rds"))
+    path <- file.path(xen_dir, paste0(samp, "_8um_filtered.rds"))
     message("  ", samp, ": ", path)
     readRDS(path)
   }),
@@ -81,7 +91,6 @@ xenium_8um <- setNames(
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
-
 # Seurat v4/v5 compatible raw counts extraction; returns NULL if assay absent
 get_counts_safe <- function(sobj, assay, slot = "counts") {
   if (!assay %in% names(sobj@assays)) return(NULL)
@@ -94,7 +103,6 @@ get_counts_safe <- function(sobj, assay, slot = "counts") {
   )
 }
 
-# Row-sum dispatch for sparse and dense matrices
 rsum <- function(m) {
   if (inherits(m, "dgCMatrix") || inherits(m, "dgRMatrix")) Matrix::rowSums(m)
   else base::rowSums(m)
@@ -120,12 +128,14 @@ pick_vizgen_assay <- function(sobj) {
   nm[which.max(sizes)]
 }
 
-# Per-sample target/blank probe tally for one Seurat object.
-# Returns a tidy tibble: platform, feature, count, Sample, Type.
+# Per-sample target/blank probe totals: platform, feature, count, Sample, Type
 summarise_sample_probes <- function(sobj, sample_name, platform) {
 
   if (platform == "Xenium") {
-    blank_assays <- c("Unassigned", "ControlCodeword", "ControlProbe")
+    # Background = Unassigned codewords only ("BlankCodeword" assay), matching
+    # qc_backgrounds.R (FDR) and moransi.R; ControlCodeword / ControlProbe are
+    # deliberately excluded.
+    blank_assays <- c("BlankCodeword")
     target_mat   <- get_counts_safe(sobj, "Xenium")
     target_df    <- NULL
     if (!is.null(target_mat)) {
@@ -154,11 +164,11 @@ summarise_sample_probes <- function(sobj, sample_name, platform) {
   if (platform == "MERSCOPE") {
     viz_assay <- pick_vizgen_assay(sobj)
     viz_mat   <- get_counts_safe(sobj, viz_assay)
-    blank_mat <- get_counts_safe(sobj, "BlankProbe")
+    blank_mat <- get_counts_safe(sobj, "Blanks")
     if (is.null(viz_mat)) return(NULL)
 
     feats_v      <- rownames(viz_mat)
-    # Detect blank rows by name when no dedicated BlankProbe assay is present
+    # Detect blank rows by name when no dedicated Blanks assay is present
     is_blank_row <- if (is.null(blank_mat))
       grepl("^(Blank|BlankProbe)", feats_v, ignore.case = TRUE)
     else
@@ -193,7 +203,7 @@ summarise_sample_probes <- function(sobj, sample_name, platform) {
 }
 
 # ---------------------------------------------------------------------------
-# Build per-sample probe count tables
+# Per-sample probe count tables
 # ---------------------------------------------------------------------------
 message("Summarising per-sample probe counts (MERSCOPE)...")
 mer_tbl <- purrr::map_dfr(
@@ -209,10 +219,21 @@ xen_tbl <- purrr::map_dfr(
 
 all_counts <- bind_rows(mer_tbl, xen_tbl)
 
+# Stop if any retained sample has no background probes (e.g. a sample with no
+# background assay that has not been listed in exclude_samples)
+no_bg <- all_counts %>%
+  group_by(platform, Sample) %>%
+  summarise(has_bg = any(Type == "Blank"), .groups = "drop") %>%
+  filter(!has_bg)
+if (nrow(no_bg) > 0) {
+  stop("No background probes for: ", paste(no_bg$Sample, collapse = ", "),
+       ". Add to qc_backgrounds$exclude_samples in config.yaml if intended.")
+}
+
 # ---------------------------------------------------------------------------
-# Compute platform-level ranked probe table
+# Platform-level (pooled) ranked probe table
 # ---------------------------------------------------------------------------
-# Mean count per probe averaged across all samples within each platform
+# mean_count = mean over samples of per-sample totals
 plat_counts <- all_counts %>%
   group_by(platform, feature, Type) %>%
   summarise(mean_count = mean(count, na.rm = TRUE), .groups = "drop")
@@ -223,7 +244,6 @@ thr_platform <- plat_counts %>%
   group_by(platform) %>%
   summarise(bg95 = quantile(mean_count, 0.95, na.rm = TRUE), .groups = "drop")
 
-# Rank each probe within its platform (descending by mean count)
 ranked_plat <- plat_counts %>%
   group_by(platform) %>%
   arrange(desc(mean_count), .by_group = TRUE) %>%
@@ -241,34 +261,47 @@ ranked_plat <- plat_counts %>%
 message("Probe rank table: ", nrow(ranked_plat), " rows")
 
 # ---------------------------------------------------------------------------
-# Build label pool for S-curve annotations
+# Per-sample ranked probe table
 # ---------------------------------------------------------------------------
-# Label pool is the union of:
-#   - top N MERSCOPE overlap targets by mean count
-#   - right-tail N MERSCOPE overlap targets by rank percentile
-# Applied to both platforms for consistent annotation across facets.
-mer_overlap <- ranked_plat %>%
-  filter(platform == "MERSCOPE", Type == "Target", is_overlap)
+# Same definitions as the pooled table, applied within each sample (count =
+# per-sample total, bg95 = that sample's threshold). The pooled table remains
+# the source for main Fig 2.
+thr_sample <- all_counts %>%
+  filter(Type == "Blank") %>%
+  group_by(platform, Sample) %>%
+  summarise(bg95 = unname(quantile(count, 0.95, na.rm = TRUE)), .groups = "drop")
 
-top_set  <- if (nrow(mer_overlap) > 0)
-  slice_max(mer_overlap, order_by = mean_count, n = opt$label_top_n,  with_ties = FALSE)
-else
-  mer_overlap
+ranked_sample <- all_counts %>%
+  group_by(platform, Sample) %>%
+  arrange(desc(count), .by_group = TRUE) %>%
+  mutate(
+    rank      = row_number(),
+    rank_frac = rank / max(rank, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  left_join(thr_sample, by = c("platform", "Sample")) %>%
+  mutate(
+    y          = log10(pmax(count, 0) + 1),
+    is_overlap = (Type == "Target" & count <= bg95)
+  )
 
-tail_set <- if (nrow(mer_overlap) > 0)
-  slice_max(mer_overlap, order_by = rank_frac,  n = opt$label_tail_n, with_ties = FALSE)
-else
-  mer_overlap
+message("Per-sample probe rank table: ", nrow(ranked_sample), " rows, ",
+        n_distinct(ranked_sample$Sample), " samples")
 
-label_pool  <- union(top_set$feature, tail_set$feature)
+# ---------------------------------------------------------------------------
+# S-curve label pool
+# ---------------------------------------------------------------------------
+# Every MERSCOPE overlap target, applied to both platforms for consistent
+# annotation across facets.
+label_pool <- ranked_plat %>%
+  filter(platform == "MERSCOPE", Type == "Target", is_overlap) %>%
+  pull(feature)
+
 label_genes <- ranked_plat %>%
   filter(feature %in% label_pool) %>%
   distinct(feature) %>%
   arrange(feature)
 
-# ---------------------------------------------------------------------------
-# Build overlap target table
-# ---------------------------------------------------------------------------
 probe_overlap_targets <- ranked_plat %>%
   filter(Type == "Target", is_overlap) %>%
   arrange(platform, desc(mean_count)) %>%
@@ -280,6 +313,9 @@ probe_overlap_targets <- ranked_plat %>%
 saveRDS(ranked_plat, file.path(opt$out_dir, "ranked_plat.rds"))
 message("Saved: ranked_plat.rds")
 
+saveRDS(ranked_sample, file.path(opt$out_dir, "ranked_sample.rds"))
+message("Saved: ranked_sample.rds")
+
 utils::write.csv(probe_overlap_targets,
                  file.path(opt$out_dir, "probe_overlap_targets.csv"),
                  row.names = FALSE)
@@ -290,16 +326,13 @@ utils::write.csv(label_genes,
                  row.names = FALSE)
 message("Saved: label_pool_genes.csv")
 
-# Per-platform gene lists: one gene per line, no header
-probe_overlap_targets %>%
-  group_by(platform) %>%
-  summarise(feature = sort(unique(feature)), .groups = "drop") %>%
-  split(.$platform) %>%
-  purrr::iwalk(function(df, plat) {
-    out_file <- file.path(opt$out_dir, paste0("overlap_genes_", tolower(plat), ".txt"))
-    utils::write.table(df["feature"], file = out_file,
-                       quote = FALSE, row.names = FALSE, col.names = FALSE)
-    message("Saved: overlap_genes_", tolower(plat), ".txt")
-  })
+# One gene per line, no header. Written for every platform (empty if no
+# overlaps) so no stale list from a previous run is left behind
+walk(c("MERSCOPE", "Xenium"), function(plat) {
+  genes    <- sort(unique(probe_overlap_targets$feature[probe_overlap_targets$platform == plat]))
+  out_file <- file.path(opt$out_dir, paste0("overlap_genes_", tolower(plat), ".txt"))
+  writeLines(genes, out_file)
+  message("Saved: overlap_genes_", tolower(plat), ".txt (", length(genes), " genes)")
+})
 
 message("Done. Outputs written to: ", opt$out_dir)

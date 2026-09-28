@@ -1,14 +1,17 @@
-# Purpose:  Build pseudobulk count matrices across VisiumHD, MERSCOPE, and Xenium
-#           using 8µm bins restricted to the common gene set. Finds genes present in
-#           every sample of every platform, sums counts per sample, and exports a
-#           DGEList (edgeR) with sample metadata for downstream gene-comparison panels.
-# Inputs:   config/config.yaml
-#           results/01_preprocessing/merscope_8um/{sample}_8um.rds
-#           results/01_preprocessing/xenium_8um/{sample}_8um.rds
-#           cfg$visiumhd$data_dir / cfg$visiumhd$samples  (VisiumHD Seurat objects)
+# Purpose:  Pseudobulk 8µm-bin counts per animal and platform (VisiumHD, MERSCOPE,
+#           Xenium) for the four animals on all three platforms (WT709, WT713,
+#           KO167, KO168), restricted to genes present in all 12 datasets, and
+#           export an edgeR DGEList for the gene-comparison panels.
+# Inputs:   config/config.yaml  (gene_comparison$animals, visiumhd, output_dir)
+#           cfg$visiumhd$data_dir / cfg$visiumhd$samples  (VisiumHD 8µm Seurat
+#               objects, "Spatial.008um" assay)
+#           results/01_preprocessing/merscope_8um_filtered/{sample}_8um_filtered.rds
+#               ("Vizgen" assay)
+#           results/01_preprocessing/xenium_8um_filtered/{sample}_8um_filtered.rds
+#               ("Xenium" assay)
 # Outputs:  results/03_benchmarking/gene_comparison/dge.rds
 #           results/03_benchmarking/gene_comparison/counts_mat.rds
-
+#               (genes x 12 samples; columns named "{Platform}_{SampleID}")
 
 suppressPackageStartupMessages({
   library(Seurat)
@@ -40,6 +43,77 @@ cfg <- yaml::read_yaml(opt$config)
 dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ---------------------------------------------------------------------------
+# Sample table: one row per animal x platform
+# ---------------------------------------------------------------------------
+# config["gene_comparison"]["animals"] keys are {CONDITION}{ID} (e.g. "WT709");
+# condition and animal ID come from the key, so metadata does not depend on
+# parsing platform-specific sample names.
+bin_res  <- cfg$bin_resolutions[[1]]   # 8
+platform_info <- tribble(
+  ~Platform,  ~cfg_key,    ~assay,
+  "VisiumHD", "visiumhd",  "Spatial.008um",
+  "MERSCOPE", "merscope",  "Vizgen",
+  "Xenium",   "xenium",    "Xenium"
+)
+
+sample_path <- function(cfg_key, sample_id) {
+  if (cfg_key == "visiumhd") {
+    file.path(cfg$visiumhd$data_dir, cfg$visiumhd$samples[[sample_id]])
+  } else {
+    file.path(cfg$output_dir, "01_preprocessing",
+              paste0(cfg_key, "_", bin_res, "um_filtered"),
+              paste0(sample_id, "_", bin_res, "um_filtered.rds"))
+  }
+}
+
+samples_tbl <- imap_dfr(cfg$gene_comparison$animals, function(plat_samples, animal) {
+  platform_info %>%
+    mutate(
+      Animal   = animal,
+      SampleID = map_chr(cfg_key, ~ plat_samples[[.x]] %||% NA_character_)
+    )
+}) %>%
+  mutate(
+    Type  = sub("^([A-Z]+)\\d+$", "\\1", Animal),
+    IDnum = sub("^[A-Z]+(\\d+)$", "\\1", Animal),
+    path  = map2_chr(cfg_key, SampleID, ~ if (is.na(.y)) NA_character_ else sample_path(.x, .y)),
+    Platform = factor(Platform, levels = platform_info$Platform)
+  ) %>%
+  arrange(Platform, match(Animal, names(cfg$gene_comparison$animals)))
+
+# ---------------------------------------------------------------------------
+# Validate the sample table before loading anything
+# ---------------------------------------------------------------------------
+# Requires exactly 4 matched WT/KO animals per platform with existing inputs
+validate_samples <- function(tbl) {
+  if (anyNA(tbl$SampleID)) {
+    stop("Missing sample name in gene_comparison$animals for: ",
+         paste(tbl$Animal[is.na(tbl$SampleID)], tbl$Platform[is.na(tbl$SampleID)], collapse = ", "))
+  }
+  per_platform <- count(tbl, Platform)
+  if (any(per_platform$n != 4)) stop("Expected exactly 4 animals per platform, got: ",
+                                     paste(per_platform$Platform, per_platform$n, collapse = ", "))
+  if (nrow(tbl) != 12) stop("Expected exactly 12 samples, got ", nrow(tbl))
+  animal_sets <- split(tbl$Animal, tbl$Platform) %>% map(sort)
+  if (!all(map_lgl(animal_sets, identical, animal_sets[[1]]))) {
+    stop("Animal IDs differ between platforms")
+  }
+  if (!all(tbl$Type %in% c("WT", "KO"))) stop("Unexpected condition in animal keys: ",
+                                              paste(unique(tbl$Animal[!tbl$Type %in% c("WT", "KO")]), collapse = ", "))
+  col_names <- paste(tbl$Platform, tbl$SampleID, sep = "_")
+  if (anyDuplicated(col_names)) stop("Duplicated sample IDs: ", paste(col_names[duplicated(col_names)], collapse = ", "))
+  missing <- tbl$path[!file.exists(tbl$path)]
+  if (length(missing) > 0) stop("Missing input objects:\n  ", paste(missing, collapse = "\n  "))
+  invisible(TRUE)
+}
+validate_samples(samples_tbl)
+
+message("Selected samples:")
+walk(seq_len(nrow(samples_tbl)), function(i) {
+  with(samples_tbl[i, ], message(sprintf("  %-8s %-6s %-16s %s", Platform, Animal, SampleID, path)))
+})
+
+# ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
 
@@ -51,156 +125,80 @@ get_counts_compat <- function(sobj, assay) {
   )
 }
 
-# Sum counts across all non-empty bins for a single sample, restricted to
-# the supplied gene set. Returns a one-row-per-gene tibble suitable for
-# bind_rows() into the full pseudobulk data frame.
-get_pseudobulk_common <- function(sobj, sample_name, platform, genes) {
-  assay <- DefaultAssay(sobj)
-  mat   <- get_counts_compat(sobj, assay)
-
-  # Drop bins with zero total counts — they contribute nothing to the sum
-  keep <- Matrix::colSums(mat) > 0
-  if (any(!keep))
-    message("    ", sample_name, ": removing ", sum(!keep), " empty bins")
-
-  mat   <- mat[genes, keep, drop = FALSE]
-  cnts  <- Matrix::rowSums(mat)
-
-  tibble(feature  = names(cnts),
-         count    = as.numeric(cnts),
-         Platform = platform,
-         SampleID = sample_name)
+# Raw per-gene counts summed across all bins (empty bins add zero, so no bin
+# filtering is needed). Objects are loaded one at a time so only one
+# (up to ~1.9 GB) is in memory at once.
+pseudobulk_one <- function(path, assay, label) {
+  message("  ", label, ": loading ", path)
+  sobj <- readRDS(path)
+  if (!assay %in% Assays(sobj)) stop(label, " has no ", assay, " assay")
+  mat  <- get_counts_compat(sobj, assay)
+  message("    ", ncol(mat), " bins, ", nrow(mat), " genes")
+  cnts <- Matrix::rowSums(mat)
+  rm(sobj, mat); gc(verbose = FALSE)
+  cnts
 }
 
 # ---------------------------------------------------------------------------
-# Load VisiumHD samples
+# Build per-sample pseudobulk vectors
 # ---------------------------------------------------------------------------
-message("Loading VisiumHD samples...")
+message("Building pseudobulk counts per sample...")
 
-visiumhd_dir     <- cfg$visiumhd$data_dir
-visiumhd_samples <- cfg$visiumhd$samples
+samples_tbl <- samples_tbl %>%
+  mutate(ColName = paste(Platform, SampleID, sep = "_"))
 
-visiumhd_8um <- lapply(names(visiumhd_samples), function(samp) {
-  path <- file.path(visiumhd_dir, visiumhd_samples[[samp]])
-  message("  ", samp, ": ", path)
-  obj <- readRDS(path)
-  DefaultAssay(obj) <- "Spatial.008um"
-  obj
-}) |> setNames(names(visiumhd_samples))
+pb_list <- pmap(samples_tbl, function(path, assay, ColName, ...) {
+  pseudobulk_one(path, assay, ColName)
+}) %>% setNames(samples_tbl$ColName)
 
 # ---------------------------------------------------------------------------
-# Load MERSCOPE 8µm binning objects
+# Identify genes present in all 12 selected datasets
 # ---------------------------------------------------------------------------
-message("Loading MERSCOPE 8µm binning objects...")
+message("Finding genes common to all ", length(pb_list), " datasets...")
 
-merscope_samples <- cfg$spatial_analysis$merscope_samples
-bin_res          <- cfg$bin_resolutions[[1]]   # 8
+genes_by_platform <- split(pb_list, samples_tbl$Platform) %>%
+  map(~ Reduce(intersect, map(.x, names)))
+iwalk(genes_by_platform, ~ message("  ", .y, " genes (all 4 animals): ", length(.x)))
 
-merscope_8um <- lapply(merscope_samples, function(samp) {
-  path <- file.path(cfg$output_dir, "01_preprocessing",
-                    paste0("merscope_", bin_res, "um"),
-                    paste0(samp, "_", bin_res, "um.rds"))
-  message("  ", samp, ": ", path)
-  obj <- readRDS(path)
-  DefaultAssay(obj) <- "Vizgen"
-  obj
-}) |> setNames(merscope_samples)
+common_genes <- Reduce(intersect, map(pb_list, names))
+message("  Common genes: ", length(common_genes))
+if (length(common_genes) == 0) stop("No genes common to all selected datasets")
 
-# ---------------------------------------------------------------------------
-# Load Xenium 8µm binning objects
-# ---------------------------------------------------------------------------
-message("Loading Xenium 8µm binning objects...")
+counts_mat <- map(pb_list, ~ .x[common_genes]) %>%
+  do.call(cbind, .)
+rownames(counts_mat) <- common_genes
 
-xenium_samples <- cfg$spatial_analysis$xenium_default_samples
-
-xenium_8um <- lapply(xenium_samples, function(samp) {
-  path <- file.path(cfg$output_dir, "01_preprocessing",
-                    paste0("xenium_", bin_res, "um"),
-                    paste0(samp, "_", bin_res, "um.rds"))
-  message("  ", samp, ": ", path)
-  obj <- readRDS(path)
-  DefaultAssay(obj) <- "Xenium"
-  obj
-}) |> setNames(xenium_samples)
+validate_counts <- function(mat, pb_list, genes) {
+  if (ncol(mat) != 12) stop("Expected 12 pseudobulk samples, got ", ncol(mat))
+  if (anyDuplicated(colnames(mat))) stop("Duplicated sample IDs in count matrix")
+  gene_ok <- map_lgl(pb_list, ~ all(genes %in% names(.x)))
+  if (!all(gene_ok)) stop("Common genes missing from: ", paste(names(pb_list)[!gene_ok], collapse = ", "))
+  if (anyNA(mat)) stop("Count matrix contains missing values")
+  if (any(mat < 0)) stop("Count matrix contains negative values")
+  if (any(mat != round(mat))) stop("Count matrix contains non-integer values (expected raw counts)")
+  invisible(TRUE)
+}
+validate_counts(counts_mat, pb_list, common_genes)
 
 # ---------------------------------------------------------------------------
-# Identify common genes across all samples and all platforms
+# Sample metadata
 # ---------------------------------------------------------------------------
-message("Finding common genes across all platforms...")
-
-# Within-platform intersection first, then across platforms.
-# This ensures every sample in every platform carries the common gene set.
-vis_genes <- Reduce(intersect,
-                    lapply(visiumhd_8um,  function(s) rownames(get_counts_compat(s, DefaultAssay(s)))))
-mer_genes <- Reduce(intersect,
-                    lapply(merscope_8um, function(s) rownames(get_counts_compat(s, DefaultAssay(s)))))
-xen_genes <- Reduce(intersect,
-                    lapply(xenium_8um,  function(s) rownames(get_counts_compat(s, DefaultAssay(s)))))
-
-common_genes <- Reduce(intersect, list(vis_genes, mer_genes, xen_genes))
-message("  VisiumHD genes: ", length(vis_genes))
-message("  MERSCOPE genes: ", length(mer_genes))
-message("  Xenium genes:   ", length(xen_genes))
-message("  Common genes:   ", length(common_genes))
-
-# ---------------------------------------------------------------------------
-# Build pseudobulk data frame
-# ---------------------------------------------------------------------------
-message("Building pseudobulk count matrix...")
-
-pb_df <- bind_rows(
-  map_dfr(names(visiumhd_8um),  ~ get_pseudobulk_common(visiumhd_8um[[.]],  ., "VisiumHD", common_genes)),
-  map_dfr(names(merscope_8um),  ~ get_pseudobulk_common(merscope_8um[[.]],  ., "MERSCOPE", common_genes)),
-  map_dfr(names(xenium_8um),    ~ get_pseudobulk_common(xenium_8um[[.]],    ., "Xenium",   common_genes))
-)
-
-# Pivot to genes × samples count matrix, filling any gaps with 0
-counts_mat <- pb_df %>%
-  pivot_wider(names_from  = c(Platform, SampleID),
-              names_sep   = "_",
-              values_from = count,
-              values_fill = list(count = 0)) %>%
-  column_to_rownames("feature") %>%
-  as.matrix()
-
-# ---------------------------------------------------------------------------
-# Build sample metadata (col_info) and derive condition + animal ID
-# ---------------------------------------------------------------------------
-# Column names of counts_mat are "{Platform}_{SampleID}".
-# Type is derived from the sample name prefix (MERSCOPE/Xenium: wt/ko/ctrl)
-# or from the numeric animal ID suffix (VisiumHD: batch33_NNN).
-# FLAG: animal ID sets below are project-specific; update if new samples are added.
-
-col_info <- tibble(Combined = colnames(counts_mat)) %>%
-  separate(col    = Combined,
-           into   = c("Platform", "SampleID"),
-           sep    = "_",
-           extra  = "merge",
-           remove = FALSE) %>%
-  mutate(
-    IDnum = case_when(
-      # VisiumHD: SampleID like "batch33_167" — take the trailing number
-      Platform == "VisiumHD" ~ sub(".*_(\\d+)$", "\\1", SampleID),
-      # MERSCOPE/Xenium: SampleID like "wt709_batch13" — take the leading number
-      TRUE                   ~ sub("^[a-z]+(\\d+)_.*", "\\1", SampleID)
-    ),
-    Type = case_when(
-      # MERSCOPE/Xenium: uppercase the alpha prefix (wt -> WT, ko -> KO, ctrl -> CTRL)
-      Platform != "VisiumHD" ~ toupper(sub("^([a-z]+)\\d+.*", "\\1", SampleID)),
-      # VisiumHD: infer from animal ID
-      IDnum %in% c("709", "710", "713") ~ "WT",
-      IDnum %in% c("166", "167", "168") ~ "KO",
-      IDnum %in% c("172", "173", "174") ~ "CTRL",
-      TRUE ~ "Unknown"
-    ),
-    Type = factor(Type, levels = c("WT", "KO", "CTRL"))
+# Type keeps the WT/KO/CTRL levels used by the figure scripts; no CTRL animals
+# are included.
+col_info <- samples_tbl %>%
+  transmute(
+    ColName,
+    SampleID,
+    Platform = as.character(Platform),
+    Type     = factor(Type, levels = c("WT", "KO", "CTRL")),
+    IDnum
   ) %>%
-  column_to_rownames("Combined") %>%
-  select(SampleID, Platform, Type, IDnum)
+  column_to_rownames("ColName")
+stopifnot(identical(rownames(col_info), colnames(counts_mat)))
 
-# ---------------------------------------------------------------------------
-# Create DGEList
-# ---------------------------------------------------------------------------
+message("Sample metadata:")
+print(col_info)
+
 dge <- DGEList(counts = counts_mat, samples = col_info)
 message("DGEList: ", nrow(dge), " genes x ", ncol(dge), " samples")
 

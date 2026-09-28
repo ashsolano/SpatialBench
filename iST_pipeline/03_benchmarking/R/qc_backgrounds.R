@@ -1,12 +1,12 @@
-# Purpose:  Compute background vs target count summaries and false discovery rate
-#           (FDR) for MERSCOPE and Xenium 8µm binning objects. Also loads
-#           pre-computed Moran's I results and combines them into a single RDS
-#           for downstream figure generation.
-# Inputs:   config/config.yaml  (spatial_analysis, output_dir)
-#           results/01_preprocessing/merscope_8um/{sample}_8um.rds
-#           results/01_preprocessing/xenium_8um/{sample}_8um.rds
-#           --moransi_mer  path to pre-computed Moran's I RDS for MERSCOPE
-#           --moransi_xen  path to pre-computed Moran's I RDS for Xenium
+# Purpose:  Background vs target count summaries and false discovery rate (FDR)
+#           for MERSCOPE and Xenium post-QC 8µm bins (empty-bin + DBSCAN filtered
+#           by filter_binned_{merscope,xenium}); also combines the pre-computed
+#           Moran's I results into one RDS.
+# Inputs:   config/config.yaml  (spatial_analysis, qc_backgrounds, output_dir)
+#           results/01_preprocessing/merscope_8um_filtered/{sample}_8um_filtered.rds
+#           results/01_preprocessing/xenium_8um_filtered/{sample}_8um_filtered.rds
+#           --moransi_mer  path to Moran's I RDS for MERSCOPE (from moransi.R)
+#           --moransi_xen  path to Moran's I RDS for Xenium   (from moransi.R)
 # Outputs:  results/03_benchmarking/qc_backgrounds/background_per_sample.rds
 #               (per-sample × assay total counts: platform, Sample, Assay, total_calls)
 #           results/03_benchmarking/qc_backgrounds/background_summary.rds
@@ -15,7 +15,6 @@
 #               (per-sample FDR: Sample, Platform, FDR)
 #           results/03_benchmarking/qc_backgrounds/moransi_combined.rds
 #               (combined Moran's I with platform column; only if both --moransi_* provided)
-
 
 suppressPackageStartupMessages({
   library(Seurat)
@@ -52,46 +51,64 @@ dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 # ---------------------------------------------------------------------------
 # Load 8um binning objects
 # ---------------------------------------------------------------------------
-merscope_samples <- cfg$spatial_analysis$merscope_samples
-xenium_samples   <- cfg$spatial_analysis$xenium_default_samples
+# Samples without background probe signal are excluded via
+# config["qc_backgrounds"]["exclude_samples"] (see config.yaml for reasons)
+bg_cfg           <- cfg$qc_backgrounds
+merscope_samples <- setdiff(cfg$spatial_analysis$merscope_samples,      unlist(bg_cfg$exclude_samples$merscope))
+xenium_samples   <- setdiff(cfg$spatial_analysis$xenium_default_samples, unlist(bg_cfg$exclude_samples$xenium))
+walk(c("merscope", "xenium"), function(p) {
+  excl <- unlist(bg_cfg$exclude_samples[[p]])
+  if (length(excl) > 0) message("Excluding ", p, " samples (no background signal): ", paste(excl, collapse = ", "))
+})
 
-message("Loading MERSCOPE 8um objects...")
-mer_dir      <- file.path(cfg$output_dir, "01_preprocessing", "merscope_8um")
-merscope_8um <- setNames(
-  lapply(merscope_samples, function(samp) {
-    path <- file.path(mer_dir, paste0(samp, "_8um.rds"))
-    message("  ", samp, ": ", path)
-    readRDS(path)
-  }),
-  merscope_samples
-)
+# Read the filtered 8um object for each sample of one platform; stops if any
+# sample is missing so that all samples are guaranteed to be retained
+load_filtered_8um <- function(platform, samples) {
+  in_dir <- file.path(cfg$output_dir, "01_preprocessing", paste0(platform, "_8um_filtered"))
+  paths  <- file.path(in_dir, paste0(samples, "_8um_filtered.rds"))
+  missing <- paths[!file.exists(paths)]
+  if (length(missing) > 0) stop("Missing filtered 8um objects:\n  ", paste(missing, collapse = "\n  "))
+  walk2(samples, paths, ~ message("  ", .x, ": ", .y))
+  setNames(map(paths, readRDS), samples)
+}
 
-message("Loading Xenium 8um objects...")
-xen_dir     <- file.path(cfg$output_dir, "01_preprocessing", "xenium_8um")
-xenium_8um  <- setNames(
-  lapply(xenium_samples, function(samp) {
-    path <- file.path(xen_dir, paste0(samp, "_8um.rds"))
-    message("  ", samp, ": ", path)
-    readRDS(path)
-  }),
-  xenium_samples
-)
+# Stop if any retained sample lacks a required metadata column (e.g. a sample
+# with no background assay that has not been listed in exclude_samples)
+check_features <- function(obj_list, features) {
+  iwalk(obj_list, function(obj, samp) {
+    absent <- setdiff(features, colnames(obj@meta.data))
+    if (length(absent) > 0) {
+      stop(samp, " is missing: ", paste(absent, collapse = ", "),
+           ". Add it to qc_backgrounds$exclude_samples in config.yaml if intended.")
+    }
+  })
+}
+
+message("Loading MERSCOPE filtered 8um objects...")
+merscope_8um <- load_filtered_8um("merscope", merscope_samples)
+
+message("Loading Xenium filtered 8um objects...")
+xenium_8um   <- load_filtered_8um("xenium", xenium_samples)
+
+message("Samples loaded: MERSCOPE = ", length(merscope_8um), ", Xenium = ", length(xenium_8um))
 
 # ---------------------------------------------------------------------------
 # Background count summaries
 # ---------------------------------------------------------------------------
-# FLAG: nCount_BlankProbe and nCount_Vizgen are MERSCOPE-specific metadata
-#       column names derived from the Seurat object assay names. If assay
-#       naming changes upstream, update mer_features here.
-mer_features <- c("nCount_Vizgen", "nCount_BlankProbe")
+# Metadata column names are derived from the Seurat assay names in the binned
+# objects. MERSCOPE blank probes are in the "Blanks" assay. Xenium
+# "Unassigned Codeword" features are loaded by Seurat into the "BlankCodeword"
+# assay. If assay naming changes upstream, update these vectors.
+mer_features <- c("nCount_Vizgen", "nCount_Blanks")
 xen_features <- c(
   "nCount_Xenium",
   "nCount_ControlCodeword",
   "nCount_ControlProbe",
-  "nCount_Unassigned"
+  "nCount_BlankCodeword"
 )
+check_features(merscope_8um, mer_features)
+check_features(xenium_8um,   xen_features)
 
-# Sum each metadata column across cells to get per-sample totals per assay type
 summarise_counts <- function(obj_list, features, platform_name) {
   tibble(
     Sample   = names(obj_list),
@@ -109,17 +126,16 @@ summarise_counts <- function(obj_list, features, platform_name) {
 mer_df <- summarise_counts(merscope_8um, mer_features, "MERSCOPE")
 xen_df <- summarise_counts(xenium_8um,   xen_features, "Xenium")
 
-# Recode raw metadata column names to human-readable assay labels
 plot_df <- bind_rows(mer_df, xen_df) %>%
   mutate(
     Assay = recode(
       Assay,
       nCount_Vizgen          = "Gene",
       nCount_Xenium          = "Gene",
-      nCount_BlankProbe      = "Blanks",
+      nCount_Blanks          = "Blanks",
       nCount_ControlCodeword = "Control Codeword",
       nCount_ControlProbe    = "Control Probe",
-      nCount_Unassigned      = "Unassigned"
+      nCount_BlankCodeword   = "Unassigned"
     ),
     Assay = factor(
       Assay,
@@ -127,14 +143,12 @@ plot_df <- bind_rows(mer_df, xen_df) %>%
     )
   )
 
-# One summed total per sample × assay for boxplot-level data
 background_per_sample <- plot_df %>%
   group_by(platform, Assay, Sample) %>%
   summarise(total_calls = sum(total_calls, na.rm = TRUE), .groups = "drop") %>%
   mutate(total_calls = round(total_calls)) %>%
   arrange(platform, Assay, Sample)
 
-# Median/IQR summary across samples per platform × assay
 background_summary <- background_per_sample %>%
   group_by(platform, Assay) %>%
   summarise(
@@ -155,15 +169,13 @@ print(background_summary)
 # ---------------------------------------------------------------------------
 # FDR computation
 # ---------------------------------------------------------------------------
-# FLAG: n_bg and n_tg are probe-panel constants specific to these assays.
-#       MERSCOPE: 89 blank probes, 91 target genes.
-#       Xenium:   380 unassigned codeword probes (background), 100 target genes.
-#       Consider moving these values into config.yaml if the probe panel changes
-#       between experiments.
-n_bg_mer <- 89
-n_tg_mer <- 91
-n_bg_xen <- 380
-n_tg_xen <- 100
+# Probe-panel constants from config["qc_backgrounds"]:
+#   MERSCOPE: 89 blank probes, 91 target genes.
+#   Xenium:   380 unassigned codeword probes (background), 100 target genes.
+n_bg_mer <- bg_cfg$n_bg$merscope
+n_tg_mer <- bg_cfg$n_tg$merscope
+n_bg_xen <- bg_cfg$n_bg$xenium
+n_tg_xen <- bg_cfg$n_tg$xenium
 
 # FDR = (background calls / n background probes) / (target calls / n target genes) * 100
 compute_fdr <- function(obj_list, bg_feat, tg_feat, n_bg, n_tg, platform_name) {
@@ -178,21 +190,21 @@ compute_fdr <- function(obj_list, bg_feat, tg_feat, n_bg, n_tg, platform_name) {
 }
 
 mer_fdr <- compute_fdr(
-  merscope_8um, "nCount_BlankProbe", "nCount_Vizgen",
+  merscope_8um, "nCount_Blanks", "nCount_Vizgen",
   n_bg_mer, n_tg_mer, "MERSCOPE"
 )
 xen_fdr <- compute_fdr(
-  xenium_8um, "nCount_Unassigned", "nCount_Xenium",
+  xenium_8um, "nCount_BlankCodeword", "nCount_Xenium",
   n_bg_xen, n_tg_xen, "Xenium"
 )
 
 fdr_results <- bind_rows(mer_fdr, xen_fdr)
 
 message("FDR results:")
-print(fdr_results)
+print(fdr_results, n = Inf)
 
 # ---------------------------------------------------------------------------
-# Moran's I (pass-through: load pre-computed RDS files and combine)
+# Moran's I (pass-through: load moransi.R outputs and combine)
 # ---------------------------------------------------------------------------
 if (!is.null(opt$moransi_mer) && !is.null(opt$moransi_xen)) {
   if (!file.exists(opt$moransi_mer)) stop("--moransi_mer not found: ", opt$moransi_mer)

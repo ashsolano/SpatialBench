@@ -1,22 +1,22 @@
-# Purpose:  Compute pseudobulk correlations between 10X FLEX scRNA-seq and
-#           VisiumHD, MERSCOPE, and Xenium binning objects at 8µm resolution.
-#           Produces per-platform averaged log10(CPM+1) expression data frames
-#           and Pearson correlations suitable for fig1c density scatter plots.
-#           Only matched WT animals (cfg$scrna$wt_ids, i.e. 709 and 713) are used
-#           for every dataset; this is enforced before pseudobulk aggregation.
-# Inputs:   config/config.yaml  (scrna, visiumhd, spatial_analysis, bin_resolutions)
-#           cfg$scrna$path  (scFlex_seu.rds)
-#           results/01_preprocessing/merscope_8um_filtered/{sample}_8um_filtered.rds
-#           results/01_preprocessing/xenium_8um_filtered/{sample}_8um_filtered.rds
-#           cfg$visiumhd$data_dir  (VisiumHD Seurat objects with Spatial.008um assay)
-# Outputs:  results/03_benchmarking/scrna_correlation/avg_expr.rds
-
+# Purpose:  Pseudobulk log10(CPM + 1) and Pearson r between single-cell
+#           references (10X FLEX, 10X 3' GEX) and VisiumHD, MERSCOPE and Xenium
+#           (8µm bins), matched WT animals (cfg$scrna$wt_ids) only. Common-gene
+#           values are the pairwise values subset to the gene_lists.rds
+#           intersection (not renormalised).
+# Inputs:   config/config.yaml; cfg$scrna$path (FLEX), cfg$scrna$sc_path (3' GEX);
+#           results/03_benchmarking/dataset_summary/gene_lists.rds;
+#           results/01_preprocessing/{merscope,xenium}_8um_filtered/*.rds;
+#           cfg$visiumhd$data_dir
+# Outputs:  results/03_benchmarking/scrna_correlation/avg_expr.rds (FLEX, for fig1.R)
+#           results/03_benchmarking/scrna_correlation/correlation_by_reference.rds
+#             (data, summary, common_genes, samples; for fig1ext_scrna_correlation.R)
 
 suppressPackageStartupMessages({
   library(Seurat)
   library(SeuratObject)
   library(Matrix)
   library(dplyr)
+  library(purrr)
   library(yaml)
   library(optparse)
 })
@@ -28,6 +28,9 @@ option_list <- list(
   make_option(c("--config"),  type = "character",
               default = "config/config.yaml",
               help    = "Path to config.yaml [default: %default]"),
+  make_option(c("--gene_lists"), type = "character",
+              default = "results/03_benchmarking/dataset_summary/gene_lists.rds",
+              help    = "Per-platform gene panels from dataset_summary.R [default: %default]"),
   make_option(c("--out_dir"), type = "character",
               default = "results/03_benchmarking/scrna_correlation",
               help    = "Output directory [default: %default]")
@@ -35,15 +38,13 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list = option_list))
 
 cfg <- yaml::read_yaml(opt$config)
+if (!file.exists(opt$gene_lists)) stop("--gene_lists not found: ", opt$gene_lists)
 dir.create(opt$out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
-
-# Path to a filtered (post empty-bin + DBSCAN QC) binning object written by
-# filter_binned.R, e.g. results/01_preprocessing/merscope_8um_filtered/
-# wt709_batch13_8um_filtered.rds
+# Filtered (empty-bin + DBSCAN QC) binning object written by filter_binned.R
 filtered_bin_path <- function(output_dir, platform, sample, res) {
   file.path(output_dir, "01_preprocessing",
             paste0(platform, "_", res, "um_filtered"),
@@ -55,7 +56,7 @@ wt_id_regex <- function(wt_ids) {
   paste0("(^|[^0-9])(", paste(wt_ids, collapse = "|"), ")([^0-9]|$)")
 }
 
-# Extract the WT animal ID contained in each sample name (NA if none matches)
+# WT animal ID contained in each sample name (NA if none matches)
 extract_animal_id <- function(sample_names, wt_ids) {
   m <- regmatches(sample_names, regexec(wt_id_regex(wt_ids), sample_names))
   vapply(m, function(x) if (length(x) >= 3) x[3] else NA_character_, character(1))
@@ -74,12 +75,13 @@ check_matched_animals <- function(animal_ids, wt_ids, dataset) {
   invisible(TRUE)
 }
 
-# Subset a vector of sample names to the matched WT animals and verify that
-# exactly the expected animals are present (e.g. drops wt710 and KO/ctrl)
+# Keep the matched WT samples (e.g. drops wt710, KO, ctrl) and log the rest
 select_matched_samples <- function(sample_names, wt_ids, dataset) {
   animal_ids <- extract_animal_id(sample_names, wt_ids)
   keep       <- !is.na(animal_ids)
   check_matched_animals(animal_ids[keep], wt_ids, dataset)
+  message(dataset, " excluded (not matched WT): ",
+          if (any(!keep)) paste(sample_names[!keep], collapse = ", ") else "none")
   sample_names[keep]
 }
 
@@ -91,8 +93,7 @@ get_counts <- function(seu, assay) {
   )
 }
 
-# Pseudobulk a single ST sample: drop empty bins first, then sum across bins.
-# Returns a named numeric vector (genes).
+# Pseudobulk one ST sample: drop empty bins, then sum across bins
 pseudobulk_one_sample <- function(seu, assay) {
   counts    <- get_counts(seu, assay)
   keep_bins <- Matrix::colSums(counts) > 0
@@ -103,7 +104,7 @@ pseudobulk_one_sample <- function(seu, assay) {
   Matrix::rowSums(counts)
 }
 
-# Aggregate a named list of ST Seurat objects into a sparse gene × sample matrix.
+# Named list of ST objects -> sparse gene × sample matrix
 pseudobulk_samples <- function(seurat_list, assay, target_genes) {
   vec_list <- lapply(seurat_list, pseudobulk_one_sample, assay = assay)
 
@@ -119,7 +120,6 @@ pseudobulk_samples <- function(seurat_list, assay, target_genes) {
   pb_mat
 }
 
-# Detect the per-cell sample ID column in scRNA metadata
 detect_sample_col <- function(meta,
                               candidates = c("SampleID", "sample_id", "Sample",
                                              "sample", "donor", "donor_id",
@@ -128,10 +128,11 @@ detect_sample_col <- function(meta,
   NA_character_
 }
 
-# Pseudobulk the scRNA-seq object into a sparse gene × sample matrix,
-# optionally subsetting to WT sample IDs (matched by grepl against column values).
+# Pseudobulk scRNA-seq into a sparse gene × sample matrix, optionally keeping
+# only WT sample IDs
 pseudobulk_scRNA <- function(sc_seu, assay, target_genes,
-                             wt_ids = NULL, sample_col = NULL) {
+                             wt_ids = NULL, sample_col = NULL,
+                             sc_label = "scRNA") {
   counts <- get_counts(sc_seu, assay)
   meta   <- sc_seu@meta.data
 
@@ -153,13 +154,18 @@ pseudobulk_scRNA <- function(sc_seu, assay, target_genes,
            "  WT IDs:  ", paste(wt_ids,            collapse = ", "), "\n",
            "  Present: ", paste(unique(sample_vec), collapse = ", "))
     }
+    # NA = undemultiplexed cells
+    excluded <- table(sample_vec[!keep], useNA = "ifany")
+    message("  ", sc_label, ": excluded ", sum(!keep), " cells (not matched WT): ",
+            if (length(excluded) > 0)
+              paste0(names(excluded), " (", excluded, ")", collapse = ", ")
+            else "none")
     counts     <- counts[, keep, drop = FALSE]
     sample_vec <- sample_vec[keep]
-    message("  scRNA: kept ", sum(keep), " WT cells: ",
+    message("  ", sc_label, ": kept ", sum(keep), " WT cells: ",
             paste(unique(sample_vec), collapse = ", "))
-    # Verify exactly the matched animals contribute to the scRNA pseudobulk
     check_matched_animals(extract_animal_id(unique(sample_vec), wt_ids),
-                          wt_ids, "10x FLEX")
+                          wt_ids, sc_label)
   }
 
   unique_samples <- unique(sample_vec)
@@ -178,9 +184,8 @@ pseudobulk_scRNA <- function(sc_seu, assay, target_genes,
   pb_mat
 }
 
-# Sparse-compatible log10(CPM+1) normalisation.
-# Empty samples are dropped before scaling. Column scaling is done via sparse
-# matrix arithmetic; the final log transform materialises the (small) result.
+# log10(CPM+1); empty samples are dropped before scaling. Scaling stays sparse;
+# only the final (small) result is densified.
 sparse_log10cpm <- function(pb_mat) {
   lib_sizes <- Matrix::colSums(pb_mat)
   keep <- lib_sizes > 0
@@ -192,20 +197,19 @@ sparse_log10cpm <- function(pb_mat) {
   }
   if (ncol(pb_mat) == 0) stop("Pseudobulk matrix has no non-empty samples.")
 
-  # Scale each column to CPM without materialising a dense intermediate
   cpm_mat <- Matrix::t(Matrix::t(pb_mat) * (1e6 / lib_sizes))
 
-  # log10(CPM+1) densifies here; pb_mat is genes × samples (small)
   log10(as.matrix(cpm_mat) + 1)
 }
 
-# Prepare per-gene average log10(CPM+1) for one platform.
-# Returns a list: data (gene-level data frame), correlation (Pearson r), n_genes.
+# Per-gene mean over animals of log10(CPM+1) for one platform; library size =
+# the pairwise shared genes. Returns list(data, correlation (Pearson r), n_genes).
 prepare_correlation_data <- function(sc_seu, sc_assay,
                                      st_list, st_assay,
                                      platform_name,
                                      wt_ids        = NULL,
-                                     sc_sample_col = NULL) {
+                                     sc_sample_col = NULL,
+                                     sc_label      = "scRNA") {
 
   # Restrict ST list to the matched WT animals before gene selection and
   # pseudobulk aggregation; stops unless exactly one sample per animal remains
@@ -219,11 +223,12 @@ prepare_correlation_data <- function(sc_seu, sc_assay,
   sc_counts    <- get_counts(sc_seu, sc_assay)
   st_gene_sets <- lapply(st_list, function(seu) rownames(get_counts(seu, st_assay)))
   shared_genes <- Reduce(intersect, c(list(rownames(sc_counts)), st_gene_sets))
-  message(platform_name, ": ", length(shared_genes), " shared genes")
+  message(platform_name, " vs ", sc_label, ": ", length(shared_genes), " shared genes")
 
   st_pb <- pseudobulk_samples(st_list, st_assay, shared_genes)
   sc_pb <- pseudobulk_scRNA(sc_seu, sc_assay, shared_genes,
-                            wt_ids = wt_ids, sample_col = sc_sample_col)
+                            wt_ids = wt_ids, sample_col = sc_sample_col,
+                            sc_label = sc_label)
 
   sc_norm <- sparse_log10cpm(sc_pb)
   st_norm <- sparse_log10cpm(st_pb)
@@ -244,17 +249,54 @@ prepare_correlation_data <- function(sc_seu, sc_assay,
   list(data = expr_data, correlation = cor_value, n_genes = nrow(expr_data))
 }
 
-# ---------------------------------------------------------------------------
-# Load scRNA-seq FLEX reference
-# ---------------------------------------------------------------------------
-message("Loading scRNA-seq FLEX reference...")
-sc_path <- cfg$scrna$path
-message("  ", sc_path)
-sc_rnaseq <- readRDS(sc_path)
+# Run before loading the ST objects so a wrong sample column fails fast
+check_reference_samples <- function(sc_seu, sample_col, wt_ids, sc_label) {
+  if (!sample_col %in% colnames(sc_seu@meta.data)) {
+    stop(sc_label, ": sample column '", sample_col, "' not found in metadata")
+  }
+  present <- unique(as.character(sc_seu@meta.data[[sample_col]]))
+  message(sc_label, " sample IDs present: ",
+          paste(sort(present, na.last = TRUE), collapse = ", "))
+  found <- extract_animal_id(present, wt_ids)
+  check_matched_animals(unique(found[!is.na(found)]), wt_ids, sc_label)
+}
 
-sc_assay      <- cfg$scrna$assay
-sc_sample_col <- cfg$scrna$sample_col
-wt_ids        <- as.character(cfg$scrna$wt_ids)
+# Stop if any common gene is missing, so every intersection panel has the same genes
+subset_common_genes <- function(expr_data, common_genes, label) {
+  missing <- setdiff(common_genes, expr_data$Gene)
+  if (length(missing) > 0) {
+    stop(label, ": ", length(missing), " common genes missing from pairwise data: ",
+         paste(missing, collapse = ", "))
+  }
+  dplyr::filter(expr_data, Gene %in% common_genes)
+}
+
+wt_ids <- as.character(cfg$scrna$wt_ids)
+
+# ---------------------------------------------------------------------------
+# Load single-cell references (10X FLEX first: avg_expr.rds is FLEX only)
+# ---------------------------------------------------------------------------
+references <- list(
+  FLEX = list(label = "10X FLEX",   path  = cfg$scrna$path,
+              assay = cfg$scrna$assay,    sample_col = cfg$scrna$sample_col),
+  GEX  = list(label = "10X 3' GEX", path  = cfg$scrna$sc_path,
+              assay = cfg$scrna$sc_assay, sample_col = cfg$scrna$sc_sample_col)
+)
+
+sc_objs <- lapply(references, function(ref) {
+  message("Loading ", ref$label, " reference...\n  ", ref$path)
+  seu <- readRDS(ref$path)
+  check_reference_samples(seu, ref$sample_col, wt_ids, ref$label)
+  seu
+})
+
+# ---------------------------------------------------------------------------
+# Common gene set (VisiumHD ∩ MERSCOPE ∩ Xenium), defined in dataset_summary.R
+# ---------------------------------------------------------------------------
+gene_lists   <- readRDS(opt$gene_lists)
+common_genes <- Reduce(intersect, gene_lists[c("VisiumHD", "MERSCOPE", "Xenium")])
+message("Common gene set (dataset_summary gene_lists.rds): ",
+        length(common_genes), " genes")
 
 # ---------------------------------------------------------------------------
 # Load VisiumHD samples
@@ -263,7 +305,7 @@ message("Loading VisiumHD samples...")
 
 visiumhd_dir     <- cfg$visiumhd$data_dir
 visiumhd_samples <- cfg$visiumhd$samples
-# Load only the matched WT animals (drops KO samples)
+# Matched WT animals only (drops KO samples)
 visiumhd_samples <- visiumhd_samples[
   select_matched_samples(names(visiumhd_samples), wt_ids, "VisiumHD")
 ]
@@ -282,7 +324,7 @@ names(visiumhd_objs) <- names(visiumhd_samples)
 # ---------------------------------------------------------------------------
 message("Loading filtered MERSCOPE 8µm binning objects...")
 
-# Load only the matched WT animals (drops wt710, ctrl and KO samples)
+# Matched WT animals only (drops wt710, ctrl and KO samples)
 merscope_samples <- select_matched_samples(
   unlist(cfg$spatial_analysis$merscope_samples), wt_ids, "MERSCOPE"
 )
@@ -299,7 +341,7 @@ merscope_objs <- lapply(merscope_samples, function(samp) {
 # ---------------------------------------------------------------------------
 message("Loading filtered Xenium 8µm binning objects...")
 
-# Load only the matched WT animals (drops wt710, ctrl and KO samples)
+# Matched WT animals only (drops wt710, ctrl and KO samples)
 xenium_samples <- select_matched_samples(
   unlist(cfg$spatial_analysis$xenium_default_samples), wt_ids, "Xenium"
 )
@@ -311,41 +353,84 @@ xenium_objs <- lapply(xenium_samples, function(samp) {
 }) |> setNames(xenium_samples)
 
 # ---------------------------------------------------------------------------
-# Compute per-platform pseudobulk correlations
+# Compute per-platform pseudobulk correlations for each reference
 # ---------------------------------------------------------------------------
-message("Computing VisiumHD correlation...")
-visiumhd_results <- prepare_correlation_data(
-  sc_seu        = sc_rnaseq,     sc_assay = sc_assay,
-  st_list       = visiumhd_objs, st_assay = "Spatial.008um",
-  platform_name = "VisiumHD",
-  wt_ids        = wt_ids,        sc_sample_col = sc_sample_col
+st_platforms <- list(
+  VisiumHD = list(objs = visiumhd_objs, assay = "Spatial.008um"),
+  MERSCOPE = list(objs = merscope_objs, assay = "Vizgen"),
+  Xenium   = list(objs = xenium_objs,   assay = "Xenium")
 )
 
-message("Computing MERSCOPE correlation...")
-merscope_results <- prepare_correlation_data(
-  sc_seu        = sc_rnaseq,     sc_assay = sc_assay,
-  st_list       = merscope_objs, st_assay = "Vizgen",
-  platform_name = "MERSCOPE",
-  wt_ids        = wt_ids,        sc_sample_col = sc_sample_col
-)
+results <- lapply(names(references), function(ref_name) {
+  ref <- references[[ref_name]]
+  lapply(names(st_platforms), function(plat) {
+    message("Computing ", plat, " vs ", ref$label, " correlation...")
+    prepare_correlation_data(
+      sc_seu        = sc_objs[[ref_name]], sc_assay = ref$assay,
+      st_list       = st_platforms[[plat]]$objs,
+      st_assay      = st_platforms[[plat]]$assay,
+      platform_name = plat,
+      wt_ids        = wt_ids, sc_sample_col = ref$sample_col,
+      sc_label      = ref$label
+    )
+  }) |> setNames(names(st_platforms))
+}) |> setNames(names(references))
 
-message("Computing Xenium correlation...")
-xenium_results <- prepare_correlation_data(
-  sc_seu        = sc_rnaseq,    sc_assay = sc_assay,
-  st_list       = xenium_objs,  st_assay = "Xenium",
-  platform_name = "Xenium",
-  wt_ids        = wt_ids,       sc_sample_col = sc_sample_col
-)
+# ---------------------------------------------------------------------------
+# Long gene-level table: pairwise and common gene sets
+# ---------------------------------------------------------------------------
+corr_data <- purrr::imap_dfr(results, function(ref_res, ref_name) {
+  purrr::imap_dfr(ref_res, function(res, plat) {
+    label <- paste0(plat, " vs ", references[[ref_name]]$label)
+    dplyr::bind_rows(
+      dplyr::mutate(res$data, gene_set = "pairwise"),
+      dplyr::mutate(subset_common_genes(res$data, common_genes, label),
+                    gene_set = "common")
+    ) |>
+      dplyr::mutate(reference = ref_name, platform = plat, .before = 1)
+  })
+})
+
+corr_summary <- corr_data |>
+  dplyr::group_by(reference, platform, gene_set) |>
+  dplyr::summarise(
+    r       = cor(scRNA, ST, method = "pearson", use = "complete.obs"),
+    n_genes = dplyr::n(),
+    .groups = "drop"
+  )
+message("Correlation summary:")
+print(as.data.frame(corr_summary))
+
+# The pairwise rows must reproduce the per-platform results exactly
+pairwise_check <- corr_summary |>
+  dplyr::filter(gene_set == "pairwise") |>
+  dplyr::rowwise() |>
+  dplyr::mutate(ok = isTRUE(all.equal(r, results[[reference]][[platform]]$correlation)) &&
+                     n_genes == results[[reference]][[platform]]$n_genes)
+stopifnot(all(pairwise_check$ok))
 
 # ---------------------------------------------------------------------------
 # Save results
 # ---------------------------------------------------------------------------
-avg_expr <- list(
-  VisiumHD = visiumhd_results,
-  MERSCOPE = merscope_results,
-  Xenium   = xenium_results
-)
+# FLEX only, structure expected by fig1.R
+avg_expr <- results$FLEX
 
 out_file <- file.path(opt$out_dir, "avg_expr.rds")
 saveRDS(avg_expr, out_file)
+message("Saved: ", out_file)
+
+# Both references (fig1ext_scrna_correlation.R)
+corr_by_ref <- list(
+  data         = corr_data,
+  summary      = corr_summary,
+  common_genes = common_genes,
+  samples      = list(
+    wt_ids   = wt_ids,
+    VisiumHD = names(visiumhd_objs),
+    MERSCOPE = merscope_samples,
+    Xenium   = xenium_samples
+  )
+)
+out_file <- file.path(opt$out_dir, "correlation_by_reference.rds")
+saveRDS(corr_by_ref, out_file)
 message("Saved: ", out_file)
