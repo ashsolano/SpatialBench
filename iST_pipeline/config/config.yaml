@@ -9,6 +9,18 @@ scrna:
   wt_ids:
     - "709"
     - "713"
+  # 10x scRNA-seq (scGEM) reference, used by qc_metrics.R --sc_rds for the
+  # Figure 2 FLEX / scRNA-seq / VisiumHD QC comparison, and by
+  # scrna_correlation.R as the second (3' GEX) pseudobulk reference
+  sc_path:       "/vast/projects/SpatialBench/scGEM_subcluster/scGEM_seu.rds"
+  sc_assay:      "RNA"
+  # Per-cell sample ID column of the scGEM object (HTO hashtag demultiplexing)
+  sc_sample_col: "HTO_demuxmix"
+  # FLEX SampleID / scRNA-seq HTO_demuxmix sample ID -> animal label for plots
+  animal_labels:
+    "708": "WT708"
+    "709": "WT709"
+    "713": "WT713"
 
 visiumhd:
   data_dir: "/vast/projects/SpatialBench/VisiumHD/processed_obj/normalized_obj_08016um"
@@ -225,6 +237,57 @@ mols_qv_threshold: 20
 
 # Root output directory
 output_dir: results
+
+
+# ---------------------------------------------------------------------------
+# 03_benchmarking: qc_backgrounds / moransi parameters
+# ---------------------------------------------------------------------------
+qc_backgrounds:
+  # Samples excluded from background counts, FDR and Moran's I. Both Batch22
+  # MERSCOPE samples have no blank-probe signal: all 89 Blank- columns in the
+  # resegmented cell_by_gene.csv are zero and detected_transcripts.csv has no
+  # Blank- transcripts, so the filtered 8um objects have no Blanks assay.
+  exclude_samples:
+    merscope:
+      - ctrl174_batch6
+      - ko166_batch6
+    xenium: []
+  # Probe-panel constants for FDR = (bg calls / n_bg) / (target calls / n_tg) * 100
+  # MERSCOPE: 89 blank probes, 91 target genes.
+  # Xenium:   380 unassigned codewords, 100 target genes.
+  n_bg:
+    merscope: 89
+    xenium: 380
+  n_tg:
+    merscope: 91
+    xenium: 100
+
+
+# ---------------------------------------------------------------------------
+# 03_benchmarking: gene_comparison (cross-platform pseudobulk)
+# ---------------------------------------------------------------------------
+gene_comparison:
+  # Matched animals profiled on all three platforms. Keys are {CONDITION}{ID};
+  # condition (WT/KO) and animal ID are derived from the key. Values are the
+  # sample names on each platform: visiumhd -> key of visiumhd$samples;
+  # merscope / xenium -> filtered 8um objects in results/01_preprocessing/.
+  animals:
+    WT709:
+      visiumhd: batch33_709
+      merscope: wt709_batch13
+      xenium:   wt709_batch27
+    WT713:
+      visiumhd: batch33_713
+      merscope: wt713_batch13
+      xenium:   wt713_batch24
+    KO167:
+      visiumhd: batch33_167
+      merscope: ko167_batch10
+      xenium:   ko167_batch24
+    KO168:
+      visiumhd: batch33_168
+      merscope: ko168_batch9
+      xenium:   ko168_batch27
 
 
 # ---------------------------------------------------------------------------

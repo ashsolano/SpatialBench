@@ -1,38 +1,32 @@
-# Rules:   dataset_summary, scrna_correlation, qc_metrics, qc_backgrounds,
-#          probe_rank, gene_comparison, segmentation_quality
 # Purpose: Cross-platform benchmarking metrics and quality checks.
+# Rules:   dataset_summary, scrna_correlation, qc_metrics, qc_metrics_roi, moransi,
+#          qc_backgrounds, probe_rank, gene_comparison, variance_partition,
+#          segmentation_quality
 #
-# Pipeline DAG:
-#   (01_preprocessing binning outputs)
-#     -> dataset_summary     (single job — all platforms, all resolutions)
-#     -> scrna_correlation   (single job — all platforms, 8µm only)
-#     -> qc_metrics          (single job — all platforms, all resolutions; needs gene_lists)
-#     -> qc_backgrounds      (single job — MERSCOPE + Xenium, 8µm only)
-#     -> probe_rank          (single job — MERSCOPE + Xenium, 8µm only)
-#     -> gene_comparison     (single job — all platforms, 8µm only)
+# DAG (from 01_preprocessing binned objects; single job unless noted):
+#   dataset_summary      all platforms, all resolutions
+#   scrna_correlation    8µm; FLEX + 3' GEX; needs gene_lists
+#   qc_metrics           all resolutions; needs gene_lists
+#   moransi              one job per platform (MERSCOPE, Xenium); filtered 8µm
+#   qc_backgrounds       MERSCOPE + Xenium, filtered 8µm; needs moransi
+#   probe_rank           MERSCOPE + Xenium, 8µm
+#   gene_comparison      all platforms, 8µm -> variance_partition
 #
 # Config keys used:
-#   config["visiumhd"]["data_dir"]                        — VisiumHD processed objects (external)
-#   config["visiumhd"]["samples"]                         — VisiumHD sample mapping
-#   config["spatial_analysis"]["merscope_samples"]        — 9 MERSCOPE samples
-#   config["spatial_analysis"]["xenium_default_samples"]  — 9 Xenium samples
-#   config["bin_resolutions"]                             — [8, 16]
-#   config["scrna"]["path"]                               — scFlex_seu.rds (external)
-#   config["output_dir"]                                  — results root
+#   visiumhd.data_dir, visiumhd.samples          VisiumHD objects (external) and mapping
+#   spatial_analysis.merscope_samples            9 MERSCOPE samples
+#   spatial_analysis.xenium_default_samples      9 Xenium samples
+#   bin_resolutions                              [8, 16]
+#   scrna.path, scrna.sc_path                    FLEX / 3' GEX references (external)
+#   scrna.wt_ids                                 matched WT animals (709, 713)
+#   output_dir                                   results root
 #
-# Named sub-targets (defined in Snakefile):
-#   snakemake benchmarking_dataset_summary
-#   snakemake benchmarking_scrna_correlation
-#   snakemake benchmarking_qc_metrics
-#   snakemake benchmarking_qc_backgrounds
-#   snakemake benchmarking_probe_rank
-#   snakemake benchmarking_gene_comparison
-#   snakemake benchmarking_segmentation_quality
-#   snakemake benchmarking_all
-
+# Named sub-targets (Snakefile): benchmarking_{dataset_summary, scrna_correlation,
+#   qc_metrics, qc_backgrounds, probe_rank, gene_comparison, variance_partition,
+#   segmentation_quality}, benchmarking_all
 
 # ---------------------------------------------------------------------------
-# Helper: collect binning RDS inputs for a dict of {platform: [samples]}
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _binning_inputs(platforms, resolutions, filtered = False):
@@ -54,16 +48,22 @@ def _binning_inputs(platforms, resolutions, filtered = False):
     return inputs
 
 
+def _qc_bg_samples(platform):
+    """Samples used for qc_backgrounds / moransi: the platform's 8µm sample
+    list minus config["qc_backgrounds"]["exclude_samples"][platform]."""
+    samples = {
+        "merscope": config["spatial_analysis"]["merscope_samples"],
+        "xenium":   config["spatial_analysis"]["xenium_default_samples"],
+    }[platform]
+    excluded = config["qc_backgrounds"]["exclude_samples"].get(platform) or []
+    return [s for s in samples if s not in excluded]
+
+
 # ---------------------------------------------------------------------------
 # Rule: dataset_summary
 # ---------------------------------------------------------------------------
-# Loads all filtered MERSCOPE and Xenium binning objects (8µm and 16µm) plus the
-# VisiumHD processed objects. Computes per-sample QC metrics (bins,
-# transcripts, sparsity, common-gene equivalents across the three platforms)
-# and saves a long-format metrics table and gene-panel lists for fig1.R.
-#
-# VisiumHD objects are loaded from the external path config["visiumhd"]["data_dir"]
-# and are not pipeline outputs, so they are not listed in input:.
+# Per-sample dataset metrics and gene-panel lists for fig1.R.
+# VisiumHD objects are external (config["visiumhd"]["data_dir"]), not listed in input:.
 
 rule dataset_summary:
     input:
@@ -107,17 +107,18 @@ rule dataset_summary:
 # ---------------------------------------------------------------------------
 # Rule: scrna_correlation
 # ---------------------------------------------------------------------------
-# Loads the 10X FLEX scRNA-seq reference and the filtered 8µm binning objects for
-# MERSCOPE and Xenium, plus VisiumHD processed objects. Pseudobulks WT
-# samples, computes sparse log10(CPM+1), and saves per-platform averaged
-# expression data frames with Pearson r values for fig1c.
-#
-# The scRNA-seq reference and VisiumHD objects are external (not pipeline
-# outputs) so they are not listed in input:.
+# Pseudobulk log10(CPM + 1) of the matched WT animals (config["scrna"]["wt_ids"])
+# vs the FLEX and 3' GEX references, with Pearson r:
+#   avg_expr.rds                  FLEX only, for fig1c (fig1.R)
+#   correlation_by_reference.rds  both references, pairwise and common gene
+#                                 sets, for fig1ext_scrna_correlation
+# scRNA references and VisiumHD objects are external, not listed in input:.
 
 rule scrna_correlation:
     input:
-        _binning_inputs(
+        script     = "03_benchmarking/R/scrna_correlation.R",   # edits to the script trigger a rerun
+        gene_lists = "results/03_benchmarking/dataset_summary/gene_lists.rds",
+        binned     = _binning_inputs(
             platforms = {
                 "merscope": config["spatial_analysis"]["merscope_samples"],
                 "xenium":   config["spatial_analysis"]["xenium_default_samples"],
@@ -126,7 +127,8 @@ rule scrna_correlation:
             filtered    = True,
         )
     output:
-        avg_expr = "results/03_benchmarking/scrna_correlation/avg_expr.rds"
+        avg_expr    = "results/03_benchmarking/scrna_correlation/avg_expr.rds",
+        corr_by_ref = "results/03_benchmarking/scrna_correlation/correlation_by_reference.rds"
     log:
         "logs/03_benchmarking/scrna_correlation.log"
     benchmark:
@@ -146,9 +148,10 @@ rule scrna_correlation:
         slurm_partition     = "regular"
     shell:
         """
-        Rscript --vanilla --verbose 03_benchmarking/R/scrna_correlation.R \
-            --config  config/config.yaml \
-            --out_dir {params.out_dir}   \
+        Rscript --vanilla --verbose {input.script} \
+            --config     config/config.yaml  \
+            --gene_lists {input.gene_lists}  \
+            --out_dir    {params.out_dir}    \
             > {log} 2>&1
         """
 
@@ -156,14 +159,9 @@ rule scrna_correlation:
 # ---------------------------------------------------------------------------
 # Rule: qc_metrics
 # ---------------------------------------------------------------------------
-# Computes per-bin nCount / nFeature metadata across all platforms and bin
-# resolutions, for both full and common-gene subsets, from the post-QC
-# (_filtered) binned objects. Saves
-# metadata_combined.rds for use by fig2_qc.R.
-#
-# VisiumHD objects are loaded from config["visiumhd"]["data_dir"] (external).
-# The --sc_rds flag for FLEX/scRNA comparison is omitted; re-run manually
-# with that flag if metadata_flex_scrna.rds is needed.
+# Per-bin nCount / nFeature (all genes and common genes) for fig2_qc.R, plus
+# FLEX / scRNA-seq / VisiumHD intersect-gene metadata. VisiumHD objects are
+# external (config["visiumhd"]["data_dir"]).
 
 rule qc_metrics:
     input:
@@ -175,9 +173,13 @@ rule qc_metrics:
             },
             resolutions = config["bin_resolutions"],
             filtered    = True,
-        )
+        ),
+        flex_rds   = config["scrna"]["path"],
+        sc_rds     = config["scrna"]["sc_path"]
     output:
-        metadata = "results/03_benchmarking/qc_metrics/metadata_combined.rds"
+        metadata        = "results/03_benchmarking/qc_metrics/metadata_combined.rds",
+        meta_flex       = "results/03_benchmarking/qc_metrics/metadata_flex_scrna.rds",
+        genes_intersect = "results/03_benchmarking/qc_metrics/genes_intersect_flex.rds"
     log:
         "logs/03_benchmarking/qc_metrics.log"
     benchmark:
@@ -201,6 +203,7 @@ rule qc_metrics:
             --config     config/config.yaml \
             --out_dir    {params.out_dir}   \
             --gene_lists {input.gene_lists} \
+            --sc_rds     {input.sc_rds}     \
             > {log} 2>&1
         """
 
@@ -208,10 +211,8 @@ rule qc_metrics:
 # ---------------------------------------------------------------------------
 # Rule: qc_metrics_roi
 # ---------------------------------------------------------------------------
-# ROI-restricted counterpart of qc_metrics: per-bin nCount / nFeature for the
-# fixed-size ROI-extracted 8µm objects of the matched animals
-# (config["stalign"]), all genes and the common-gene subset. Saves
-# metadata_roi{ROI_SIZE_LABEL}.rds for the Figure 2 ROI QC boxplots.
+# ROI-restricted qc_metrics on the fixed-size 8µm ROIs of the matched animals
+# (config["stalign"]), for the Figure 2 ROI QC boxplots.
 
 rule qc_metrics_roi:
     input:
@@ -260,28 +261,77 @@ rule qc_metrics_roi:
 
 
 # ---------------------------------------------------------------------------
+# Rule: moransi
+# ---------------------------------------------------------------------------
+# Moran's I of background (MERSCOPE Blanks / Xenium unassigned codewords) vs
+# target features, filtered 8µm. Samples exclude
+# config["qc_backgrounds"]["exclude_samples"] (MERSCOPE Batch22 samples have
+# no blank-probe signal).
+# R 4.5.1 because SEraster 0.99.5 requires R >= 4.5; sf and magick need the
+# geos/proj/gdal and ImageMagick modules.
+
+rule moransi:
+    wildcard_constraints:
+        platform = "merscope|xenium"
+    input:
+        lambda wc: _binning_inputs(
+            platforms   = {wc.platform: _qc_bg_samples(wc.platform)},
+            resolutions = [config["bin_resolutions"][0]],
+            filtered    = True,
+        )
+    output:
+        rds = "results/03_benchmarking/moransi/{platform}_moransi.rds"
+    log:
+        "logs/03_benchmarking/moransi/{platform}.log"
+    benchmark:
+        "benchmarks/03_benchmarking/moransi/{platform}.txt"
+    params:
+        resolution = 100
+    envmodules:
+        "R/4.5.1",
+        "geos/3.12.1",
+        "proj/9.4.0",
+        "gdal/3.9.0",
+        "ImageMagick/7.1.2-18"
+    resources:
+        mem_mb        = 64000,
+        cpus_per_task = 2,
+        runtime       = 240,
+        slurm_partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 03_benchmarking/R/moransi.R \
+            --config     config/config.yaml \
+            --platform   {wildcards.platform} \
+            --resolution {params.resolution} \
+            --out_rds    {output.rds} \
+            > {log} 2>&1
+        """
+
+
+# ---------------------------------------------------------------------------
 # Rule: qc_backgrounds
 # ---------------------------------------------------------------------------
-# Computes background vs target count summaries and FDR for MERSCOPE and
-# Xenium 8µm binning objects. Saves background_per_sample.rds,
-# background_summary.rds, and fdr_results.rds for fig2_background.R.
-#
-# The --moransi_mer / --moransi_xen flags for pre-computed Moran's I are
-# omitted; re-run manually with those flags to generate moransi_combined.rds.
+# Background vs target count summaries and FDR, plus combined Moran's I, for
+# fig2_background.R.
 
 rule qc_backgrounds:
     input:
-        _binning_inputs(
+        rds = _binning_inputs(
             platforms = {
-                "merscope": config["spatial_analysis"]["merscope_samples"],
-                "xenium":   config["spatial_analysis"]["xenium_default_samples"],
+                "merscope": _qc_bg_samples("merscope"),
+                "xenium":   _qc_bg_samples("xenium"),
             },
             resolutions = [config["bin_resolutions"][0]],
-        )
+            filtered    = True,
+        ),
+        moransi_mer = "results/03_benchmarking/moransi/merscope_moransi.rds",
+        moransi_xen = "results/03_benchmarking/moransi/xenium_moransi.rds"
     output:
         bg_per_sample = "results/03_benchmarking/qc_backgrounds/background_per_sample.rds",
         bg_summary    = "results/03_benchmarking/qc_backgrounds/background_summary.rds",
-        fdr           = "results/03_benchmarking/qc_backgrounds/fdr_results.rds"
+        fdr           = "results/03_benchmarking/qc_backgrounds/fdr_results.rds",
+        moransi       = "results/03_benchmarking/qc_backgrounds/moransi_combined.rds"
     log:
         "logs/03_benchmarking/qc_backgrounds.log"
     benchmark:
@@ -302,8 +352,10 @@ rule qc_backgrounds:
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/qc_backgrounds.R \
-            --config  config/config.yaml \
-            --out_dir {params.out_dir}   \
+            --config      config/config.yaml   \
+            --out_dir     {params.out_dir}     \
+            --moransi_mer {input.moransi_mer}  \
+            --moransi_xen {input.moransi_xen}  \
             > {log} 2>&1
         """
 
@@ -311,28 +363,30 @@ rule qc_backgrounds:
 # ---------------------------------------------------------------------------
 # Rule: probe_rank
 # ---------------------------------------------------------------------------
-# Builds per-probe rank tables for MERSCOPE and Xenium 8µm objects, identifies
-# target probes overlapping background probe levels (is_overlap), and generates
-# the label pool CSV used for S-curve annotations in fig2_background.R.
+# Per-probe rank tables, target probes within background levels (is_overlap),
+# and the S-curve label pool for fig2_background.R. Same sample exclusions as
+# qc_backgrounds / moransi.
 
 rule probe_rank:
     input:
         _binning_inputs(
             platforms = {
-                "merscope": config["spatial_analysis"]["merscope_samples"],
-                "xenium":   config["spatial_analysis"]["xenium_default_samples"],
+                "merscope": _qc_bg_samples("merscope"),
+                "xenium":   _qc_bg_samples("xenium"),
             },
             resolutions = [config["bin_resolutions"][0]],
+            filtered    = True,
         )
     output:
-        ranked     = "results/03_benchmarking/probe_rank/ranked_plat.rds",
-        label_pool = "results/03_benchmarking/probe_rank/label_pool_genes.csv"
+        ranked        = "results/03_benchmarking/probe_rank/ranked_plat.rds",
+        ranked_sample = "results/03_benchmarking/probe_rank/ranked_sample.rds",
+        label_pool    = "results/03_benchmarking/probe_rank/label_pool_genes.csv"
     log:
         "logs/03_benchmarking/probe_rank.log"
     benchmark:
         "benchmarks/03_benchmarking/probe_rank.txt"
     params:
-        out_dir = "results/03_benchmarking/probe_rank"
+        out_dir      = "results/03_benchmarking/probe_rank"
     envmodules:
         "R/4.4.1",
         "geos/3.12.1",
@@ -347,8 +401,8 @@ rule probe_rank:
     shell:
         """
         Rscript --vanilla --verbose 03_benchmarking/R/probe_rank.R \
-            --config  config/config.yaml \
-            --out_dir {params.out_dir}   \
+            --config       config/config.yaml      \
+            --out_dir      {params.out_dir}        \
             > {log} 2>&1
         """
 
@@ -356,21 +410,35 @@ rule probe_rank:
 # ---------------------------------------------------------------------------
 # Rule: gene_comparison
 # ---------------------------------------------------------------------------
-# Builds pseudobulk count matrices across VisiumHD, MERSCOPE, and Xenium
-# using 8µm bins restricted to the common gene set. Saves a DGEList (dge.rds)
-# and the raw count matrix (counts_mat.rds) for fig2_gene_comparison.R.
-#
-# VisiumHD objects are loaded from config["visiumhd"]["data_dir"] (external).
+# 8µm pseudobulk counts for the four matched animals
+# (config["gene_comparison"]["animals"]) on genes present in all 12 datasets,
+# for fig2_gene_comparison.R.
+# External VisiumHD objects are listed as inputs so a missing file fails at
+# DAG build time.
+
+def _gene_comparison_samples(platform):
+    """Sample names on one platform for the matched gene_comparison animals."""
+    return [a[platform] for a in config["gene_comparison"]["animals"].values()]
+
+
+def _gene_comparison_visiumhd_inputs():
+    """Paths to the VisiumHD 8µm objects for the matched animals."""
+    vhd = config["visiumhd"]
+    return [f'{vhd["data_dir"].rstrip("/")}/{vhd["samples"][s]}'
+            for s in _gene_comparison_samples("visiumhd")]
+
 
 rule gene_comparison:
     input:
-        _binning_inputs(
+        binned = _binning_inputs(
             platforms = {
-                "merscope": config["spatial_analysis"]["merscope_samples"],
-                "xenium":   config["spatial_analysis"]["xenium_default_samples"],
+                "merscope": _gene_comparison_samples("merscope"),
+                "xenium":   _gene_comparison_samples("xenium"),
             },
             resolutions = [config["bin_resolutions"][0]],
-        )
+            filtered    = True,
+        ),
+        visiumhd = _gene_comparison_visiumhd_inputs()
     output:
         dge        = "results/03_benchmarking/gene_comparison/dge.rds",
         counts_mat = "results/03_benchmarking/gene_comparison/counts_mat.rds"
@@ -399,22 +467,48 @@ rule gene_comparison:
             > {log} 2>&1
         """
 
+# ---------------------------------------------------------------------------
+# Rule: variance_partition
+# ---------------------------------------------------------------------------
+# PERMANOVA of the matched pseudobulk profiles (~ Platform + Group, sequential
+# SS) for fig2_gene_comparison.R. Platform is permuted within Animal; Group
+# (constant within Animal) is not tested.
+
+rule variance_partition:
+    input:
+        dge = "results/03_benchmarking/gene_comparison/dge.rds"
+    output:
+        permanova          = "results/03_benchmarking/variance_partition/permanova_results.rds",
+        variance_explained = "results/03_benchmarking/variance_partition/variance_explained.rds"
+    log:
+        "logs/03_benchmarking/variance_partition.log"
+    benchmark:
+        "benchmarks/03_benchmarking/variance_partition.txt"
+    params:
+        out_dir = "results/03_benchmarking/variance_partition"
+    envmodules:
+        "R/4.4.1"
+    resources:
+        mem_mb        = 8000,
+        cpus_per_task = 1,
+        runtime       = 30,
+        slurm_partition     = "regular"
+    shell:
+        """
+        Rscript --vanilla --verbose 03_benchmarking/R/variance_partition.R \
+            --dge     {input.dge}      \
+            --out_dir {params.out_dir} \
+            > {log} 2>&1
+        """
+
 
 # ---------------------------------------------------------------------------
 # Rule: segmentation_quality
 # ---------------------------------------------------------------------------
-# Loads six annotated Seurat objects (xenium_batch34 and merscope × 3 methods)
-# and pre-computed summary metrics CSVs (paths in config segmentation_comp).
-# Computes:
-#   - long-format cell morphology metrics (area, count, transcripts)
-#   - UMAP coordinates + cell type labels extracted from each object
-#   - cell type composition counts per sample
-#   - per-sample MECR (Mixed-cell Expression Co-expression Rate)
-#   - per-sample and per-cell-type negative marker purity (requires scRNA ref)
-#
-# The summary metrics CSVs and scRNA reference are external inputs; their paths
-# must be set in config.yaml under the segmentation_comp section.
-# See segmentation_quality.R header for required config keys.
+# Morphology, UMAP, composition, MECR and negative-marker purity for the six
+# annotated segmentation objects (Xenium batch34 and MERSCOPE x 3 methods).
+# Summary-metrics CSVs and scRNA reference are external; paths are set under
+# config segmentation_comp (see segmentation_quality.R header).
 
 rule segmentation_quality:
     input:
